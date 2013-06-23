@@ -1,0 +1,3377 @@
+{Thomas Koch : letzte énderung 23.4.'98
+             wg. Endlosschleife bei Fehleingabe Armeen-Verschieben}
+
+
+program Risiko;
+uses
+  crt,graph,bgidriv,bgifont;
+const
+  waittime=2500;
+  d=6;
+  angriffsschwelle=50; {des Computer in der Tabelle }
+  tot='Rest in Peace';
+  comp='Computer';
+  ntabelle=50; {Umfang der Tabelle}
+  Laender=42; {Anzahl d. LÑnder auf dem Spielfeld}
+
+type
+  tTabelle=array[1..ntabelle,1..ntabelle] of byte;
+  tLand=record
+              Name:string[20];
+              Kontinent:byte;
+              Eigner:byte;
+              Armeen:byte;
+              N:array [1..6] of byte;
+        end;
+  tSpielfeld=array [1..Laender] of tLand;
+  tKontinent=record
+                   Eigner:0..6;
+                   Laenderanz:byte;
+                   Startkennzahl:byte;
+             end;
+  tSpi=record
+               name:string[10];
+               typ:boolean;   {Human = true Computer = false}
+               status:boolean;   {dead = false}
+              end;
+  tSpieler=array [1..6] of tSpi;
+var
+  Spieler:tSpieler;
+  SP:tSpielfeld;
+  Europa,Asien,Australien,NAmerika,SAmerika,Afrika:tKontinent;
+  SpNr,SpAnz:byte;
+  tabelle:tTabelle;
+  i:byte;
+
+
+procedure tab; external;
+{$L c:\risiko\tabelle.obj}
+
+procedure inittab(var tabelle:ttabelle);
+var
+  i,j:byte;
+  e:^ttabelle;
+begin
+  for i:=1 to ntabelle do
+    for j:=1 to ntabelle do
+      tabelle[i,j]:=0;
+  e:=@tab;
+  tabelle:=e^;
+end;
+
+
+
+procedure ende;
+begin
+  closegraph;
+  clrscr;
+  writeln('Vielen Dank fÅr die Nutzung dieses Programmes. ');
+  dispose(@tab);
+end;
+
+ {Verteilung der Eigentuemer}
+procedure Kartengeben(var sp:tspielfeld;SpNr:byte);
+var
+  i,j,e:byte;
+begin
+ For i:=1 To 42 DO
+  sp[i].Eigner:=0;
+ RANDOMIZE;
+ j:=1;
+ i:=1;
+ Repeat
+   Repeat
+    e:=Random(42)+1;
+   until sp[e].eigner = 0;
+   sp[e].eigner:=i;
+   i:=i+1;
+   if i > SpNr then i:=1;
+   j:=j+1;
+ Until j=43;
+end;
+
+{Abfrage Kontinentbesitz}
+procedure Kontinenteigner(Brett:tSpielfeld);
+{Vorsicht ! Globale Kontinentvariablen !!!}
+var
+  i:byte;
+begin
+  {NAmerika}
+  NAmerika.Eigner:=Brett[1].Eigner;
+  for i:= 2 to 9 do
+    if Brett[i].Eigner<>NAmerika.Eigner then NAmerika.Eigner:=0;
+  {SAmeirka}
+  SAmerika.Eigner:=Brett[10].Eigner;
+  for i:= 11 to 13 do
+    if Brett[i].Eigner<>SAmerika.Eigner then SAmerika.Eigner:=0;
+  {Afrika}
+  Afrika.Eigner:=Brett[14].Eigner;
+  for i:= 15 to 19 do
+    if Brett[i].Eigner<>Afrika.Eigner then Afrika.Eigner:=0;
+  {Europa}
+  Europa.Eigner:=Brett[20].Eigner;
+  for i:= 21 to 26 do
+    if Brett[i].Eigner<>Europa.Eigner then Europa.Eigner:=0;
+  {Australien}
+  Australien.Eigner:=Brett[27].Eigner;
+  for i:= 28 to 30 do
+    if Brett[i].Eigner<>Australien.Eigner then Australien.Eigner:=0;
+  {Asien}
+  Asien.Eigner:=Brett[31].Eigner;
+  for i:= 32 to 42 do
+    if Brett[i].Eigner<>Asien.Eigner then Asien.Eigner:=0;
+end;
+
+procedure start (var spNr:byte;var spi:tSpieler);
+const  d=1;
+      start: array[1..5] of PointType = ((X:(d*93); Y: (d*75)),
+      (X:(d*393); Y:(d*75)),(X:(d*393); Y:
+(d*375)),(x:(d*93);y:(d*375)),(X:(d*93);
+Y: (d*75)));
+var c:char;
+    typus,ausg,stri,arg,aug,name:string;
+    i,g,f,s,id,inte:integer;
+begin
+
+ setfillstyle(1,green);
+ FillPoly(SizeOf(start) div SizeOf(PointType), start);
+ setcolor(black);
+
+   setlinestyle(0,0,3);
+  DrawPoly(SizeOf(start) div SizeOf(PointType), start);
+   setcolor(yellow);
+   setlinestyle(0,0,1);
+  DrawPoly(SizeOf(start) div SizeOf(PointType), start);
+   setcolor(black);
+   settextstyle(2,0,5);
+  outtextxy((d*195),(d*80),'Willkommen zu');
+  settextstyle(4,0,6);
+  outtextxy((d*173),(d*86),'Risiko');
+  settextstyle(2,0,4);
+  outtextxy((d*102),(d*150),'Diese Version des bekannten Brettspielklassikers');
+  outtextxy((d*102),(d*160),'wurde im Rahmen eines Projektes des Informatik');
+  outtextxy((d*102),(d*170),'Grundkurses der Stufe 13 von Herr Vichta im Jahr');
+  outtextxy((d*102),(d*180),'1997/98 erstellt. Da der Kurs im Verlaufe des');
+  outtextxy((d*102),(d*190),'Projektes auf 2 SchÅler schrumpfte, bitten wir um');
+  outtextxy((d*102),(d*200),'VerstÑndnis fÅr einige kleinere Regelabweichungen,');
+  outtextxy((d*102),(d*210),'da die knappe Zeit uns zu diesen KÅrzungen zwang.');
+  outtextxy((d*102),(d*220),'Trotz allem hoffen wir, da· wir eine spielbare');
+  outtextxy((d*102),(d*230),'Variante erstellt haben, die auch noch Spa· macht!');
+  outtextxy((d*102),(d*250),'Im folgenden seien noch alle Mitwirkenden genannt:');
+  outtextxy((d*200),(d*270),'Thomas Koch');
+  outtextxy((d*194),(d*280),'Daniel Gerritz');
+  outtextxy((d*190),(d*290),'Michael KÅppers');
+  outtextxy((d*188),(d*300),'Kai Kodaschewski');
+  outtextxy((d*120),(d*320),'...und nicht zuletzt natÅrlich Herr Vichta.');
+
+  outtextxy((d*170),(d*360),'(Weiter mit einer Taste)');
+
+ c:=readkey;
+  setfillstyle(1,green);
+ FillPoly(SizeOf(start) div SizeOf(PointType), start);
+ setcolor(black);
+
+   setlinestyle(0,0,3);
+  DrawPoly(SizeOf(start) div SizeOf(PointType), start);
+   setcolor(yellow);
+   setlinestyle(0,0,1);
+  DrawPoly(SizeOf(start) div SizeOf(PointType), start);
+   setcolor(black);
+   settextstyle(2,0,5);
+  outtextxy((d*195),(d*80),'Willkommen zu');
+  settextstyle(4,0,6);
+  outtextxy((d*173),(d*86),'Risiko');
+  settextstyle(2,0,4);
+  outtextxy((d*102),(d*150),'Dieses Programm, sowie jeglicher Teil des Quell-');
+  outtextxy((d*102),(d*160),'codes bleiben rechtlich gesehen im Besitz seiner');
+  outtextxy((d*102),(d*170),'Urheber. énderungen sowie kommerzieller Vertrieb');
+  outtextxy((d*102),(d*180),'dÅrfen daher nur unter Absprache mit den Urhebern');
+  outtextxy((d*102),(d*190),'betrieben werden. Mit dem Nutzen dieser Software');
+  outtextxy((d*102),(d*200),'akzeptieren Sie die oben genannte Bedingungen.');
+  outtextxy((d*102),(d*210),'Falls Sie an Updates, sowie an anderer Software');
+  outtextxy((d*102),(d*220),'von uns interessiert sind, so schreiben Sie uns');
+  outtextxy((d*102),(d*230),'doch einfach eine E-Mail oder schauen auf unseren');
+  outtextxy((d*102),(d*240),'Homepages unter folgend genannten Adressen nach.');
+  outtextxy((d*102),(d*270),'Risiko fÅr DOS 1.0 ist ein Produkt des Informatik');
+  outtextxy((d*102),(d*280),'Grundkurses 13 des Theodor-Heuss-Gymnasiums in');
+  outtextxy((d*102),(d*290),'Dinslaken, NRW. Unterrichtender Lehrer war Herr');
+  outtextxy((d*102),(d*300),'Vichta. ');
+  outtextxy((d*102),(d*320),'(c) 1997/1998 Informatik GK THG Dinslaken, NRW.');
+
+  outtextxy((d*170),(d*360),'(Weiter mit einer Taste)');
+
+ c:=readkey;
+  setfillstyle(1,green);
+ FillPoly(SizeOf(start) div SizeOf(PointType), start);
+ setcolor(black);
+
+   setlinestyle(0,0,3);
+  DrawPoly(SizeOf(start) div SizeOf(PointType), start);
+   setcolor(yellow);
+   setlinestyle(0,0,1);
+  DrawPoly(SizeOf(start) div SizeOf(PointType), start);
+   setcolor(black);
+   settextstyle(2,0,5);
+  outtextxy((d*195),(d*80),'Willkommen zu');
+  settextstyle(4,0,6);
+  outtextxy((d*173),(d*86),'Risiko');
+  settextstyle(2,0,4);
+  outtextxy((d*102),(d*150),'Auf diesem Bildschirm sind nun im folgenden die');
+  outtextxy((d*102),(d*160),'Kontaktadressen der Hauptprogrammierer angegeben:');
+  outtextxy((d*102),(d*170),'');
+  outtextxy((d*102),(d*180),'Daniel Gerritz:');
+  outtextxy((d*102),(d*190),'E-Mail: Daniel.Gerritz@ob.kamp.net');
+  outtextxy((d*102),(d*200),'Homepage: http://privat.schlund.de/gerritz/');
+  outtextxy((d*102),(d*210),'');
+  outtextxy((d*102),(d*220),'Thomas Koch:');
+  outtextxy((d*102),(d*230),'E-Mail: 100,163546@GermanyNet.de');
+  outtextxy((d*102),(d*240),'Homepage: ---');
+  outtextxy((d*102),(d*250),'');
+  outtextxy((d*102),(d*260),'Herr Vichta:');
+  outtextxy((d*102),(d*270),'E-Mail: ---');
+  outtextxy((d*102),(d*280),'Homepage: ---');
+  outtextxy((d*102),(d*290),'');
+  outtextxy((d*102),(d*300),'Theodor-Heuss-Gymnasium Dinslaken:');
+  outtextxy((d*102),(d*310),'E-Mail: ---');
+  outtextxy((d*102),(d*320),'Homepage: ---');
+  outtextxy((d*102),(d*330),'');
+
+  outtextxy((d*170),(d*360),'(Weiter mit einer Taste)');
+
+ c:=readkey;
+repeat
+ setfillstyle(1,green);
+ FillPoly(SizeOf(start) div SizeOf(PointType), start);
+ setcolor(black);
+
+   setlinestyle(0,0,3);
+  DrawPoly(SizeOf(start) div SizeOf(PointType), start);
+   setcolor(yellow);
+   setlinestyle(0,0,1);
+  DrawPoly(SizeOf(start) div SizeOf(PointType), start);
+   setcolor(black);
+   settextstyle(4,0,5);
+  outtextxy((d*190),(d*76),'Risiko');
+   settextstyle(2,0,5);
+  settextstyle(2,0,4);
+  outtextxy((d*102),(d*130),'Neues Spiel beginnen? (j/n)');
+   ausg:='Anzahl der Spieler? (2-6)';
+
+   repeat
+    c:=readkey;
+    c:=upcase(c);
+   until (c='J') OR (c='N');
+
+   if c='J' then begin
+   settextstyle(2,0,4);
+  outtextxy((d*102),(d*130),'Neues Spiel beginnen? (j/n) Ja');
+  outtextxy((d*137),(d*215),'');
+  outtextxy((d*102),(d*150),ausg);
+   settextstyle(2,0,4);
+
+  repeat
+   c:=readkey;
+  until (c='2') or (c='3') or (c='4') or (c='5') or (c='6');
+  ausg:=ausg+' '+c;
+  stri:=c;
+  val(stri,inte,f);
+  spanz:=inte;
+ {Marke}
+  outtextxy((d*102),(d*150),ausg);
+    {Anzahl der Spieler}
+
+    for f:=1 to 6 do spieler[f].status:=false;
+   for f:=1 to inte do spieler[f].status:=true;
+
+  for f:=1 to inte do begin
+   str(f,aug);
+
+
+  ausg:='Name Spieler '+aug+': ';
+  outtextxy((d*102),(d*170),ausg);
+  s:=0;
+  name:='';
+  repeat
+   c:=readkey;
+   arg:=ausg+' '+name;
+   setcolor(green);
+   outtextxy((d*102),(d*170),arg);
+   id:=ord(c);
+   if ((s<>0) and (id<>8) and (s<>10)) then begin
+    name:=name+c;
+     s:=s+1;
+    end;
+   if ((s=0) and (id<>8)) then begin
+    name:=name+c;
+     s:=s+1;
+    end;
+   if ((s=0) and (id=8)) then begin
+    name:='';
+     s:=0;
+    end;
+   if ((s<>0) and (id=8)) then  begin
+    delete(name,(length(name)),(length(name)-1));
+    s:=s-1;
+   end;
+   if ((s=10) and (id<>8)) then begin
+    delete(name,10,9);
+    name:=name+c;
+    s:=s;
+   end;
+
+
+   arg:=ausg+' '+name;
+   setcolor(black);
+   outtextxy((d*102),(d*170),arg);
+  until (id=13);
+  spieler[f].name:=name;
+  typus:='Ist '+name+' ein Computerspieler? (j/n) ';
+  outtextxy((d*102),(d*190),typus);
+  repeat
+ c:=readkey;
+ c:=upcase(c);
+ until (c='J') OR (c='N');
+
+   if c='J' then spieler[f].typ:=false
+   else  spieler[f].typ:=true;
+   setcolor(green);
+     outtextxy((d*102),(d*190),typus);
+      outtextxy((d*102),(d*170),arg);
+     setcolor(black);
+end;
+   setfillstyle(1,green);
+ FillPoly(SizeOf(start) div SizeOf(PointType), start);
+ setcolor(black);
+
+   setlinestyle(0,0,3);
+  DrawPoly(SizeOf(start) div SizeOf(PointType), start);
+   setcolor(yellow);
+   setlinestyle(0,0,1);
+  DrawPoly(SizeOf(start) div SizeOf(PointType), start);
+   setcolor(black);
+   settextstyle(4,0,5);
+  outtextxy((d*190),(d*76),'Risiko');
+   settextstyle(2,0,5);
+  settextstyle(2,0,4);
+ outtextxy((d*102),(d*150),'Sie haben folgende Einstellungen gemacht:');
+                                         ausg:='Sie spielen ein Spiel mit '+stri+' Spielern.';
+ outtextxy((d*102),(d*170),ausg);
+if spieler[1].typ=true then typus:='Mensch'
+                                     else typus:='Computer';
+ausg:='Spieler 1 ist ein '+ typus+' und hei·t '+(spieler[1].name)+'.';
+outtextxy((d*102),(d*200),ausg);
+
+if spieler[2].typ=true then typus:='Mensch'
+                                     else typus:='Computer';
+ausg:='Spieler 2 ist ein '+ typus+' und hei·t '+(spieler[2].name)+'.';
+  outtextxy((d*102),(d*220),ausg);
+if spanz>2 then begin
+ if spieler[3].typ=true then typus:='Mensch'
+                                     else typus:='Computer';
+        ausg:='Spieler 3 ist ein '+ typus+' und hei·t '+(spieler[3].name)+'.';
+       outtextxy((d*102),(d*240),ausg);
+end;
+ if spanz>3 then begin
+ if spieler[4].typ=true then typus:='Mensch'
+                                     else typus:='Computer';
+        ausg:='Spieler 4 ist ein '+ typus+' und hei·t '+(spieler[4].name)+'.';
+       outtextxy((d*102),(d*260),ausg);
+ end;
+ if spanz>4 then begin
+ if spieler[5].typ=true then typus:='Mensch'
+                                     else typus:='Computer';
+        ausg:='Spieler 5 ist ein '+ typus+' und hei·t '+(spieler[5].name)+'.';
+       outtextxy((d*102),(d*280),ausg);
+ end;
+ if spanz>5 then begin
+ if spieler[6].typ=true then typus:='Mensch'
+                                     else typus:='Computer';
+        ausg:='Spieler 6 ist ein '+ typus+' und hei·t '+(spieler[6].name)+'.';
+       outtextxy((d*102),(d*300),ausg);
+ end;
+ outtextxy((d*102),(d*330),'Sind diese Angaben richtig? (J/N)');
+ c:=readkey;
+ c:=upcase(c);
+ if c='J' then  begin
+  outtextxy((d*102),(d*330),'Sind diese Angaben richtig? (J/N) Ja');
+  outtextxy((d*170),(d*360),'(Mit einer Taste beginnt das Spiel!)');
+ end
+ else spanz:=0;
+end
+else
+ SpAnz:=1;
+until (spanz>0);
+end;
+function landtest (l1,l2:integer):boolean;
+ var hilf:boolean;
+ begin
+hilf:=true;
+if (l1<1) or (l1>42) or (l2<1) or (l2>42) then hilf:=false;
+if (sp[l1].eigner=sp[l2].eigner) then hilf:=true;
+if ((l1=1) and ((l2<>2) and (l2<>3) and (l2<>35)) )then hilf:=false;
+if ((l1=2) and ((l2<>1) and (l2<>3) and (l2<>4) and (l2<>8)) ) then hilf:=false;
+if ((l1=3) and ((l2<>1) and (l2<>2) and (l2<>4) and (l2<>7)) ) then hilf:=false;
+if ((l1=4) and ((l2<>2) and (l2<>3) and (l2<>8) and (l2<>5) and (l2<>6) and (l2<>7)))
+then hilf:=false;
+if ((l1=5) and (  (l2<>8) and (l2<>6) and (l2<>4) ) ) then hilf:=false;
+if ((l1=6) and (  (l2<>4) and (l2<>5) and (l2<>7) and (l2<>9) )) then hilf:=false;
+if ((l1=7) and (  (l2<>3) and (l2<>4) and (l2<>6) and (l2<>9) )) then hilf:=false;
+if ((l1=8) and (  (l2<>2) and (l2<>4) and (l2<>5) and (l2<>20)) ) then hilf:=false;
+if ((l1=9) and (  (l2<>7) and (l2<>6) and (l2<>10) ) ) then hilf:=false;
+if ((l1=10) and (  (l2<>9) and (l2<>12) and (l2<>11)  )) then hilf:=false;
+if ((l1=11) and (  (l2<>10) and (l2<>12) and (l2<>13) and (l2<>15)) ) then hilf:=false;
+if ((l1=12) and (  (l2<>10) and (l2<>13) and (l2<>11))  ) then hilf:=false;
+if ((l1=13) and (  (l2<>11) and (l2<>12) )) then hilf:=false;
+if ((l1=14) and (  (l2<>15) and (l2<>16) and (l2<>40) and (l2<>25) )) then hilf:=false;
+if ((l1=15) and (  (l2<>11) and (l2<>26) and (l2<>25) and (l2<>14) and (l2<>16) and
+(l2<>17) )) then hilf:=false;
+if ((l1=16) and (  (l2<>14) and (l2<>15) and (l2<>40) and (l2<>19) and (l2<>18) and
+(l2<>17))) then hilf:=false;
+if ((l1=17) and (  (l2<>15) and (l2<>16) and (l2<>18)  )) then hilf:=false;
+if ((l1=18) and (  (l2<>17) and (l2<>16) and (l2<>19) ) ) then hilf:=false;
+if ((l1=19) and (  (l2<>18) and (l2<>16))) then hilf:=false;
+if ((l1=20) and (  (l2<>8) and (l2<>21) and (l2<>23)  )) then hilf:=false;
+if ((l1=21) and (  (l2<>20) and (l2<>23) and (l2<>24) and (l2<>22) )) then hilf:=false;
+if ((l1=22) and (  (l2<>21) and (l2<>24) and (l2<>25) and (l2<>40) and (l2<>38) and
+(l2<>33) )) then hilf:=false;
+if ((l1=23) and (  (l2<>20) and (l2<>21) and (l2<>24) and (l2<>26) )) then hilf:=false;
+if ((l1=24) and (  (l2<>23) and (l2<>21) and (l2<>22) and (l2<>25) and (l2<>26))) then
+hilf:=false;
+if ((l1=25) and (  (l2<>26) and (l2<>24) and (l2<>22) and (l2<>40) and (l2<>14) and
+(l2<>15))) then hilf:=false;
+if ((l1=26) and (  (l2<>23) and (l2<>24) and (l2<>25) and (l2<>15) )) then hilf:=false;
+if ((l1=27) and (  (l2<>42) and (l2<>28) and (l2<>29)  )) then hilf:=false;
+if ((l1=28) and (  (l2<>27) and (l2<>30) and (l2<>29)  )) then hilf:=false;
+if ((l1=29) and (  (l2<>27) and (l2<>28) and (l2<>30) ) ) then hilf:=false;
+if ((l1=30) and (  (l2<>29) and (l2<>28) )) then hilf:=false;
+if ((l1=31) and (  (l2<>32) and (l2<>34) and (l2<>35)  )) then hilf:=false;
+if ((l1=32) and (  (l2<>33) and (l2<>39) and (l2<>22) and (l2<>34) and (l2<>37))) then
+hilf:=false;
+if ((l1=33) and (  (l2<>32) and (l2<>39) and (l2<>38) and (l2<>22))) then hilf:=false;
+if ((l1=34) and (  (l2<>32) and (l2<>31) and (l2<>35) and (l2<>37))) then hilf:=false;
+if ((l1=35) and (  (l2<>1) and (l2<>31) and (l2<>34) and (l2<>37)and (l2<>36))) then
+hilf:=false;
+if ((l1=36) and (  (l2<>35) and (l2<>37) )) then hilf:=false;
+if ((l1=37) and (  (l2<>32) and (l2<>34) and (l2<>35) and (l2<>36) and (l2<>39))) then
+hilf:=false;
+if ((l1=38) and (  (l2<>22) and (l2<>33) and (l2<>39) and (l2<>41) and (l2<>40))) then
+hilf:=false;
+if ((l1=39) and (  (l2<>38) and (l2<>41) and (l2<>42) and (l2<>37) and (l2<>32) and
+(l2<>33))) then hilf:=false;
+if ((l1=40) and (  (l2<>38) and (l2<>41) and (l2<>16) and (l2<>14) and (l2<>18) and
+(l2<>22))) then hilf:=false;
+if ((l1=41) and (  (l2<>40) and (l2<>38) and (l2<>39) and (l2<>42)) ) then hilf:=false;
+if ((l1=42) and (  (l2<>41) and (l2<>39) and (l2<>27))) then hilf:=false;
+landtest:=hilf;
+end;
+
+
+procedure text(as:string);  {Maximal 50 Zeichen}
+const
+ rechts2: array[1..5] of PointType = ((X:(0); Y: (d*75)),
+  (X:(639); Y:(d*75)),(X:(639); Y: (479)),(x:(0);y:479),(X:(0); Y: (d*75)));
+begin
+  setfillstyle(1,green);
+  FillPoly(SizeOf(rechts2) div SizeOf(PointType),rechts2 );
+  setcolor(yellow);
+  setlinestyle(0,0,2);
+  drawPoly(SizeOf(rechts2) div SizeOf(PointType),rechts2 );
+  setcolor(black);
+  settextstyle(2,0,5);
+  outtextxy((d*2),(d*76),as);
+  if as[length(as)]='.' then as[1]:=readkey;
+end;
+
+
+
+
+function frage(bs:string):byte;
+var
+  fr:byte;
+  as:string;
+  a1,a2:byte;
+  a:char;
+  err:integer;
+begin
+  repeat
+    as:=bs;
+    repeat
+      text(as);
+      a:=readkey;
+      val(a,a1,err);
+    until err=0;
+    as:=as+a;
+    text(as);
+    repeat
+      text(as);
+      a:=readkey;
+      val(a,a2,err);
+    until (err=0) or (a=chr(13)) or (a=chr(8));
+    as:=as+a;
+    if err=0 then begin
+      fr:=10*a1+a2;
+      text(as);
+      a:=readkey;
+     end
+     else
+       fr:=a1;
+  until a=chr(13);
+  frage:=fr;
+end;
+
+
+
+procedure angriffa;
+ const
+
+   rechts2: array[1..5] of PointType = ((X:(0); Y: (d*75)),
+      (X:(d*82); Y:(d*75)),(X:(d*82); Y: (479)),(x:(0);y:479),(X:(0); Y: (d*75)));
+ var c:char;
+ r1,r2,l1,l2,a1,a2:string;
+ i1,i2,f:integer;
+ begin
+  setfillstyle(1,green);
+  FillPoly(SizeOf(rechts2) div SizeOf(PointType),rechts2 );
+  setcolor(yellow);
+  setlinestyle(0,0,2);
+  drawPoly(SizeOf(rechts2) div SizeOf(PointType),rechts2 );
+  setcolor(black);
+   settextstyle(2,0,5);
+  repeat
+  text('Wollen Sie einen Angriff durchfÅhren? (J/N)');
+  c:=readkey;
+  c:=upcase(c);
+  until (c='J') or (c='N');
+  if c='J' then begin
+   outtextxy((d*2),(d*76),'Wollen Sie einen Angriff durchfÅhren? (J/N)  Ja');
+   delay(250);
+   setfillstyle(1,green);
+   FillPoly(SizeOf(rechts2) div SizeOf(PointType),rechts2 );
+   setcolor(yellow);
+   setlinestyle(0,0,2);
+   drawPoly(SizeOf(rechts2) div SizeOf(PointType),rechts2 );
+   setcolor(black);
+   repeat
+    outtextxy((d*2),(d*76),'Von welchem Land aus angreifen? (01-42): ');
+    c:=readkey;
+   until (c='0') or (c='1') or (c='2') or (c='3')or (c='4');
+   l1:='';
+   insert(c,l1,1);
+   a1:='Von welchem Land aus angreifen? (01-42): ';
+   a1:=a1+l1;
+   repeat
+   outtextxy((d*2),(d*76),a1);
+   c:=readkey;
+   until (c='0') or (c='1') or (c='2') or (c='3')or (c='4')or (c='5')or (c='6')or (c='7')or
+(c='8')or (c='9');
+   insert(c,l1,2);
+   a1:='Von welchem Land aus angreifen? (01-42): ';
+   a1:=a1+l1;
+   outtextxy((d*2),(d*76),a1);
+   delay(250);
+    setfillstyle(1,green);
+   FillPoly(SizeOf(rechts2) div SizeOf(PointType),rechts2 );
+   setcolor(yellow);
+   setlinestyle(0,0,2);
+   drawPoly(SizeOf(rechts2) div SizeOf(PointType),rechts2 );
+   setcolor(black);
+   repeat
+   outtextxy((d*2),(d*76),'Welches Land angreifen? (01-42): ');
+   c:=readkey;
+   until (c='0') or (c='1') or (c='2') or (c='3')or (c='4');
+   l2:='';
+   insert(c,l2,1);
+   a2:='Welches Land angreifen? (01-42): ';
+   a2:=a2+l2;
+   repeat
+   outtextxy((d*2),(d*76),a2);
+   c:=readkey;
+   until (c='0') or (c='1') or (c='2') or (c='3')or (c='4')or (c='5')or (c='6')or (c='7')or
+(c='8')or (c='9');
+  insert(c,l2,2);
+   a2:='Welches Land angreifen? (01-42): ';
+   a2:=a2+l2;
+   outtextxy((d*2),(d*76),a2);
+   delay(250);
+   val(l1,i1,f);
+   val(l2,i2,f);
+   if (landtest(i1,i2)=false) then begin
+    setfillstyle(1,green);
+    FillPoly(SizeOf(rechts2) div SizeOf(PointType),rechts2 );
+    setcolor(yellow);
+    setlinestyle(0,0,2);
+    drawPoly(SizeOf(rechts2) div SizeOf(PointType),rechts2 );
+    setcolor(black);
+    outtextxy((d*2),(d*76),'Falsche Eingabe einer LÑnderkennzahl! Angriff abgebrochen.');
+    c:=readkey;
+   end
+   else  begin
+    setfillstyle(1,green);
+    FillPoly(SizeOf(rechts2) div SizeOf(PointType),rechts2 );
+    setcolor(yellow);
+    setlinestyle(0,0,2);
+    drawPoly(SizeOf(rechts2) div SizeOf(PointType),rechts2 );
+    setcolor(black);
+    a1:='Richtig: ';
+    a2:=' greift ';
+    r1:='('+l1+')';
+    r2:='('+l2+')';
+
+    l1:=sp[i1].name;
+    l2:=sp[i2].name;
+    a1:=a1+l1+r1+a2+l2+r2+' an. (J/N)?';
+    repeat
+     outtextxy((d*2),(d*76),a1);
+     c:=readkey;
+     c:=upcase(c);
+    until (c='J') or (c='N');
+    if c='J' then begin
+     a1:=a1+'  Ja';
+     outtextxy((d*2),(d*76),a1);
+     delay(250);
+      setfillstyle(1,green);
+   FillPoly(SizeOf(rechts2) div SizeOf(PointType),rechts2 );
+   setcolor(yellow);
+   setlinestyle(0,0,2);
+   drawPoly(SizeOf(rechts2) div SizeOf(PointType),rechts2 );
+   setcolor(black);
+    end;
+ end;
+ end;
+end;
+
+procedure besitzerasg(sp:tSpielfeld);
+var s:integer;
+  name:string[20];
+begin
+  s:=5;
+  setcolor(black);
+  circle(d*6,d*8,s);
+  circle(d*14,d*9,s);
+  circle(d*10,d*17,s);
+  circle(d*17,d*18,s);
+circle ((d*25),(d*20),s);
+ circle ((d*14),(d*27),s);
+ circle ((d*9),(d*22),s);
+ circle ((d*22),(d*7),s);
+ circle ((d*8),(d*35),s);
+ setcolor(white);
+ circle ((d*5),(d*43),s);
+ circle ((d*5),(d*52),s);
+ circle ((d*12),(d*51),s);
+ CIRCLE((d*7),(d*63),s);
+  circle ((d*44),(d*46),s);
+  circle ((d*34),(d*48),s);
+   circle ((d*48),(d*55),s);
+  circle ((d*43),(d*55),s);
+   circle((d*44),(d*66),s);
+   circle ((d*54),(d*62),s);
+   circle (((d*41)-4),(d*14),s);
+    circle ((d*41),(d*23),s);
+ circle ((d*48),(d*25),s);
+ circle (((d*36)-3),(d*27),s);
+ circle((d*40),(d*32),s);
+  circle((d*42),(d*37),s);
+  circle((d*32),(d*40),s);
+  circle((d*71),(d*50),s);
+  circle(((d*80)-4),(d*55),s);
+   circle((d*72),(d*65),s);
+ circle((d*77),(d*64),s);
+ setcolor(black);
+circle((d*73),(d*13),s);
+  circle((d*65),(d*14),s);
+  circle((d*59),(d*21),s);
+  circle((d*69),(d*24),s);
+ circle((d*74),(d*25),s);
+  circle((d*78),(d*32),s);
+  circle((d*69),(d*33),s);
+   circle((d*55),(d*35),s);
+   circle((d*66),(d*38),s);
+  circle((d*50),(d*44),s);
+  circle((d*58),(d*46),s);
+  circle((d*65),(d*42),s);
+case sp[1].eigner of
+   1:setfillstyle(1,1);
+   2:setfillstyle(1,2);
+   3:setfillstyle(1,3);
+   4:setfillstyle(1,4);
+   5:setfillstyle(1,5);
+   6:setfillstyle(1,6);
+  end;
+  floodfill((d*6),(d*8),black);
+ case sp[2].eigner of
+   1:setfillstyle(1,1);
+   2:setfillstyle(1,2);
+   3:setfillstyle(1,3);
+   4:setfillstyle(1,4);
+   5:setfillstyle(1,5);
+   6:setfillstyle(1,6);
+  end;
+  floodfill((d*14),(d*9),black);
+case sp[3].eigner of
+   1:setfillstyle(1,1);
+   2:setfillstyle(1,2);
+   3:setfillstyle(1,3);
+   4:setfillstyle(1,4);
+   5:setfillstyle(1,5);
+   6:setfillstyle(1,6);
+  end;
+  floodfill((d*10),(d*17),black);
+case sp[4].eigner of
+   1:setfillstyle(1,1);
+   2:setfillstyle(1,2);
+   3:setfillstyle(1,3);
+   4:setfillstyle(1,4);
+   5:setfillstyle(1,5);
+   6:setfillstyle(1,6);
+  end;
+  floodfill((d*17),(d*18),black);
+case sp[5].eigner of
+   1:setfillstyle(1,1);
+   2:setfillstyle(1,2);
+   3:setfillstyle(1,3);
+   4:setfillstyle(1,4);
+   5:setfillstyle(1,5);
+   6:setfillstyle(1,6);
+  end;
+  floodfill((d*25),(d*20),black);
+case sp[6].eigner of
+   1:setfillstyle(1,1);
+   2:setfillstyle(1,2);
+   3:setfillstyle(1,3);
+   4:setfillstyle(1,4);
+   5:setfillstyle(1,5);
+   6:setfillstyle(1,6);
+  end;
+  floodfill((d*14),(d*27),black);
+case sp[7].eigner of
+   1:setfillstyle(1,1);
+   2:setfillstyle(1,2);
+   3:setfillstyle(1,3);
+   4:setfillstyle(1,4);
+   5:setfillstyle(1,5);
+   6:setfillstyle(1,6);
+  end;
+  floodfill((d*9),(d*22),black);
+case sp[8].eigner of
+   1:setfillstyle(1,1);
+   2:setfillstyle(1,2);
+   3:setfillstyle(1,3);
+   4:setfillstyle(1,4);
+   5:setfillstyle(1,5);
+   6:setfillstyle(1,6);
+ end;
+  floodfill((d*22),(d*7),black);
+case sp[9].eigner of
+   1:setfillstyle(1,1);
+   2:setfillstyle(1,2);
+   3:setfillstyle(1,3);
+   4:setfillstyle(1,4);
+   5:setfillstyle(1,5);
+   6:setfillstyle(1,6);
+  end;
+  floodfill((d*8),(d*35),black);
+case sp[10].eigner of
+   1:setfillstyle(1,1);
+   2:setfillstyle(1,2);
+   3:setfillstyle(1,3);
+   4:setfillstyle(1,4);
+   5:setfillstyle(1,5);
+   6:setfillstyle(1,6);
+  end;
+  floodfill((d*5),(d*43),white);
+case sp[12].eigner of
+   1:setfillstyle(1,1);
+   2:setfillstyle(1,2);
+   3:setfillstyle(1,3);
+   4:setfillstyle(1,4);
+   5:setfillstyle(1,5);
+   6:setfillstyle(1,6);
+  end;
+  floodfill((d*5),(d*52),white);
+case sp[11].eigner of
+   1:setfillstyle(1,1);
+   2:setfillstyle(1,2);
+   3:setfillstyle(1,3);
+   4:setfillstyle(1,4);
+   5:setfillstyle(1,5);
+   6:setfillstyle(1,6);
+  end;
+  floodfill((d*12),(d*51),white);
+case sp[13].eigner of
+   1:setfillstyle(1,1);
+   2:setfillstyle(1,2);
+   3:setfillstyle(1,3);
+   4:setfillstyle(1,4);
+   5:setfillstyle(1,5);
+   6:setfillstyle(1,6);
+  end;
+  floodfill((d*7),(d*63),white);
+case sp[14].eigner of
+   1:setfillstyle(1,1);
+   2:setfillstyle(1,2);
+   3:setfillstyle(1,3);
+   4:setfillstyle(1,4);
+   5:setfillstyle(1,5);
+   6:setfillstyle(1,6);
+  end;
+  floodfill((d*44),(d*46),white);
+case sp[15].eigner of
+   1:setfillstyle(1,1);
+   2:setfillstyle(1,2);
+   3:setfillstyle(1,3);
+   4:setfillstyle(1,4);
+   5:setfillstyle(1,5);
+   6:setfillstyle(1,6);
+  end;
+  floodfill((d*34),(d*48),white);
+case sp[16].eigner of
+   1:setfillstyle(1,1);
+   2:setfillstyle(1,2);
+   3:setfillstyle(1,3);
+   4:setfillstyle(1,4);
+   5:setfillstyle(1,5);
+   6:setfillstyle(1,6);
+  end;
+  floodfill((d*48),(d*55),white);
+case sp[17].eigner of
+   1:setfillstyle(1,1);
+   2:setfillstyle(1,2);
+   3:setfillstyle(1,3);
+   4:setfillstyle(1,4);
+   5:setfillstyle(1,5);
+   6:setfillstyle(1,6);
+  end;
+  floodfill((d*43),(d*55),white);
+case sp[18].eigner of
+   1:setfillstyle(1,1);
+   2:setfillstyle(1,2);
+   3:setfillstyle(1,3);
+   4:setfillstyle(1,4);
+   5:setfillstyle(1,5);
+   6:setfillstyle(1,6);
+  end;
+  floodfill((d*44),(d*66),white);
+case sp[19].eigner of
+   1:setfillstyle(1,1);
+   2:setfillstyle(1,2);
+   3:setfillstyle(1,3);
+   4:setfillstyle(1,4);
+   5:setfillstyle(1,5);
+   6:setfillstyle(1,6);
+  end;
+  floodfill((d*54),(d*62),white);
+case sp[20].eigner of
+   1:setfillstyle(1,1);
+   2:setfillstyle(1,2);
+   3:setfillstyle(1,3);
+   4:setfillstyle(1,4);
+   5:setfillstyle(1,5);
+   6:setfillstyle(1,6);
+  end;
+  floodfill(((d*41)-4),(d*14),white);
+case sp[21].eigner of
+   1:setfillstyle(1,1);
+   2:setfillstyle(1,2);
+   3:setfillstyle(1,3);
+   4:setfillstyle(1,4);
+   5:setfillstyle(1,5);
+   6:setfillstyle(1,6);
+  end;
+  floodfill((d*41),(d*23),white);
+case sp[22].eigner of
+   1:setfillstyle(1,1);
+   2:setfillstyle(1,2);
+   3:setfillstyle(1,3);
+   4:setfillstyle(1,4);
+   5:setfillstyle(1,5);
+   6:setfillstyle(1,6);
+  end;
+  floodfill((d*48),(d*25),white);
+case sp[23].eigner of
+   1:setfillstyle(1,1);
+   2:setfillstyle(1,2);
+   3:setfillstyle(1,3);
+   4:setfillstyle(1,4);
+   5:setfillstyle(1,5);
+   6:setfillstyle(1,6);
+  end;
+  floodfill(((d*36)-3),(d*27),white);
+case sp[24].eigner of
+   1:setfillstyle(1,1);
+   2:setfillstyle(1,2);
+   3:setfillstyle(1,3);
+   4:setfillstyle(1,4);
+   5:setfillstyle(1,5);
+   6:setfillstyle(1,6);
+  end;
+  floodfill((d*40),(d*32),white);
+case sp[25].eigner of
+   1:setfillstyle(1,1);
+   2:setfillstyle(1,2);
+   3:setfillstyle(1,3);
+   4:setfillstyle(1,4);
+   5:setfillstyle(1,5);
+   6:setfillstyle(1,6);
+  end;
+  floodfill((d*42),(d*37),white);
+case sp[26].eigner of
+   1:setfillstyle(1,1);
+   2:setfillstyle(1,2);
+   3:setfillstyle(1,3);
+   4:setfillstyle(1,4);
+   5:setfillstyle(1,5);
+   6:setfillstyle(1,6);
+  end;
+  floodfill((d*32),(d*40),white);
+case sp[27].eigner of
+   1:setfillstyle(1,1);
+   2:setfillstyle(1,2);
+   3:setfillstyle(1,3);
+   4:setfillstyle(1,4);
+   5:setfillstyle(1,5);
+   6:setfillstyle(1,6);
+  end;
+  floodfill((d*71),(d*50),white);
+case sp[28].eigner of
+   1:setfillstyle(1,1);
+   2:setfillstyle(1,2);
+   3:setfillstyle(1,3);
+   4:setfillstyle(1,4);
+   5:setfillstyle(1,5);
+   6:setfillstyle(1,6);
+  end;
+  floodfill(((d*80)-4),(d*55),white);
+case sp[29].eigner of
+   1:setfillstyle(1,1);
+   2:setfillstyle(1,2);
+   3:setfillstyle(1,3);
+   4:setfillstyle(1,4);
+   5:setfillstyle(1,5);
+   6:setfillstyle(1,6);
+  end;
+  floodfill((d*72),(d*65),white);
+case sp[30].eigner of
+   1:setfillstyle(1,1);
+   2:setfillstyle(1,2);
+   3:setfillstyle(1,3);
+   4:setfillstyle(1,4);
+   5:setfillstyle(1,5);
+   6:setfillstyle(1,6);
+  end;
+  floodfill((d*77),(d*64),white);
+case sp[31].eigner of
+   1:setfillstyle(1,1);
+   2:setfillstyle(1,2);
+   3:setfillstyle(1,3);
+   4:setfillstyle(1,4);
+   5:setfillstyle(1,5);
+   6:setfillstyle(1,6);
+  end;
+  floodfill((d*73),(d*13),black);
+case sp[32].eigner of
+   1:setfillstyle(1,1);
+   2:setfillstyle(1,2);
+   3:setfillstyle(1,3);
+   4:setfillstyle(1,4);
+   5:setfillstyle(1,5);
+   6:setfillstyle(1,6);
+  end;
+  floodfill((d*65),(d*14),black);
+case sp[33].eigner of
+   1:setfillstyle(1,1);
+   2:setfillstyle(1,2);
+   3:setfillstyle(1,3);
+   4:setfillstyle(1,4);
+   5:setfillstyle(1,5);
+   6:setfillstyle(1,6);
+  end;
+  floodfill((d*59),(d*21),black);
+case sp[34].eigner of
+   1:setfillstyle(1,1);
+   2:setfillstyle(1,2);
+   3:setfillstyle(1,3);
+   4:setfillstyle(1,4);
+   5:setfillstyle(1,5);
+   6:setfillstyle(1,6);
+  end;
+  floodfill((d*69),(d*24),black);
+case sp[35].eigner of
+   1:setfillstyle(1,1);
+   2:setfillstyle(1,2);
+   3:setfillstyle(1,3);
+   4:setfillstyle(1,4);
+   5:setfillstyle(1,5);
+   6:setfillstyle(1,6);
+  end;
+  floodfill((d*74),(d*25),black);
+case sp[36].eigner of
+   1:setfillstyle(1,1);
+   2:setfillstyle(1,2);
+   3:setfillstyle(1,3);
+   4:setfillstyle(1,4);
+   5:setfillstyle(1,5);
+   6:setfillstyle(1,6);
+  end;
+  floodfill((d*78),(d*32),black);
+case sp[37].eigner of
+   1:setfillstyle(1,1);
+   2:setfillstyle(1,2);
+   3:setfillstyle(1,3);
+   4:setfillstyle(1,4);
+   5:setfillstyle(1,5);
+   6:setfillstyle(1,6);
+  end;
+  floodfill((d*69),(d*33),black);
+case sp[38].eigner of
+   1:setfillstyle(1,1);
+   2:setfillstyle(1,2);
+   3:setfillstyle(1,3);
+   4:setfillstyle(1,4);
+   5:setfillstyle(1,5);
+   6:setfillstyle(1,6);
+  end;
+  floodfill((d*55),(d*35),black);
+case sp[39].eigner of
+   1:setfillstyle(1,1);
+   2:setfillstyle(1,2);
+   3:setfillstyle(1,3);
+   4:setfillstyle(1,4);
+   5:setfillstyle(1,5);
+   6:setfillstyle(1,6);
+  end;
+  floodfill((d*66),(d*38),black);
+case sp[40].eigner of
+   1:setfillstyle(1,1);
+   2:setfillstyle(1,2);
+   3:setfillstyle(1,3);
+   4:setfillstyle(1,4);
+   5:setfillstyle(1,5);
+   6:setfillstyle(1,6);
+  end;
+  floodfill((d*50),(d*44),black);
+case sp[41].eigner of
+   1:setfillstyle(1,1);
+   2:setfillstyle(1,2);
+   3:setfillstyle(1,3);
+   4:setfillstyle(1,4);
+   5:setfillstyle(1,5);
+   6:setfillstyle(1,6);
+  end;
+  floodfill((d*58),(d*46),black);
+case sp[42].eigner of
+   1:setfillstyle(1,1);
+   2:setfillstyle(1,2);
+   3:setfillstyle(1,3);
+   4:setfillstyle(1,4);
+   5:setfillstyle(1,5);
+   6:setfillstyle(1,6);
+  end;
+  floodfill((d*65),(d*42),black);
+
+
+
+ {Legende rechts}
+   setlinestyle(0,0,2);
+   Rectangle((d*84), (d*10), (d*86),(d*12) );
+   setfillstyle(1,1);
+   floodfill((d*85),(d*11),black);
+   Rectangle((d*84), (d*14), (d*86),(d*16) );
+   setfillstyle(1,2);
+   floodfill((d*85),(d*15),black);
+   Rectangle((d*84), (d*18), (d*86),(d*20) );
+   setfillstyle(1,3);
+   floodfill((d*85),(d*19),black);
+   Rectangle((d*84), (d*22), (d*86),(d*24) );
+   setfillstyle(1,4);
+   floodfill((d*85),(d*23),black);
+   Rectangle((d*84), (d*26), (d*86),(d*28) );
+   setfillstyle(1,5);
+   floodfill((d*85),(d*27),black);
+   Rectangle((d*84), (d*30), (d*86),(d*32) );
+   setfillstyle(1,6);
+   floodfill((d*85),(d*31),black);
+   setcolor(black);
+   settextstyle(2,0,4);
+case spieler[1].status of
+ true:name:=spieler[1].name;
+ false:name:=tot;
+end;
+outtextxy((d*87),(d*10),name);
+case spieler[2].status of
+ true:name:=spieler[2].name;
+ false:name:=tot;
+end;
+outtextxy((d*87),(d*14),name);
+case spieler[3].status of
+ true:name:=spieler[3].name;
+ false:name:=tot;
+end;
+   outtextxy((d*87),(d*18),name);
+case spieler[4].status of
+ true:name:=spieler[4].name;
+ false:name:=tot;
+end;
+   outtextxy((d*87),(d*22),name);
+case spieler[5].status of
+ true:name:=spieler[5].name;
+ false:name:=tot;
+end;
+   outtextxy((d*87),(d*26),name);
+case spieler[6].status of
+ true:name:=spieler[6].name;
+ false:name:=tot;
+end;
+   outtextxy((d*87),(d*30),name);
+
+   outtextxy((d*85),(d*34),'5  Nordamerika');
+    outtextxy((d*85),(d*36),'2  SÅdamerika');
+     outtextxy((d*85),(d*38),'5  Europa');
+    outtextxy((d*85),(d*40),'3  Afrika');
+      outtextxy((d*85),(d*42),'7  Asien');
+    outtextxy((d*85),(d*44),'2  Australien');
+end;
+
+procedure armeenasg(sp:tSpielfeld);
+var      x:integer;
+         S:string;
+begin
+ {219:€ hiermit die Armeenfelder Åberschreiben und dadurch lîschen}
+  s:='€€€';
+ setcolor(14);
+   settextstyle(2,0,4);
+
+  outtextxy((d*5),(d*  4),s);
+
+  outtextxy((d*10),(d*  6),s);
+
+   outtextxy((d*7),(d*15),s);
+
+   outtextxy((d*16),(d*15),s);
+
+  outtextxy((d*24),(d*17),s);
+
+  outtextxy((d*16),(d*25),s);
+
+  outtextxy((d*4),(d*22),s);
+
+  outtextxy((d*19),(d*9),s);
+
+  outtextxy((d*5),(d*30),s);
+  setcolor(red);
+
+  outtextxy((d*7),(d*41),s);
+
+  outtextxy((d*2),(d*48),s);
+
+  outtextxy((d*10),(d*47),s);
+
+   outtextxy((d*5),(d*60),s);
+  setcolor(6);
+  outtextxy((d*40),(d*47),s);
+
+  outtextxy((d*33),(d*51),s);
+
+  outtextxy((d*45),(d*52),s);
+
+ outtextxy((d*41),(d*57),s);
+
+ outtextxy((d*43),(d*63),s);
+
+ outtextxy((d*53),(d*64),s);
+ setcolor(9);
+ outtextxy((d*37),(d*14),s);
+
+ outtextxy((d*41),(d*19),s);
+
+  outtextxy((d*48),(d*21),s);
+
+  outtextxy((d*34),(d*29),s);
+
+ outtextxy((d*40),(d*29),s);
+
+ outtextxy((d*40),(d*35),s);
+
+ outtextxy((d*35),(d*35),s);
+  setcolor(12);
+ outtextxy((d*72),(d*52),s);
+
+ outtextxy((d*77),(d*54),s);
+
+ outtextxy((d*70),(d*62),s);
+
+ outtextxy((d*76),(d*61),s);
+  setcolor(10);
+
+ outtextxy((d*73),(d*10),s);
+
+ outtextxy((d*65),(d*10),s);
+
+ outtextxy((d*58),(d*18),s);
+
+  outtextxy((d*68),(d*20),s);
+
+ outtextxy((d*76),(d*22),s);
+
+  outtextxy((d*76),(d*35),s);
+
+ outtextxy((d*66),(d*31),s);
+
+  outtextxy((d*54),(d*31),s);
+
+ outtextxy((d*62),(d*36),s);
+
+ outtextxy((d*50),(d*40),s);
+
+ outtextxy((d*56),(d*43),s);
+
+ outtextxy((d*64),(d*44),s);
+
+{Das folgende ist die orginalprozedur von Daniel, die nicht verÑndert wurde}
+
+
+  setcolor(black);
+   settextstyle(2,0,4);
+  x:=sp[1].armeen;
+  str(x,s);
+  outtextxy((d*5),(d*  4),s);
+  x:=sp[2].armeen;
+  str(x,s);
+  outtextxy((d*10),(d*  6),s);
+   x:=sp[3].armeen;
+   str(x,s);
+   outtextxy((d*7),(d*15),s);
+     x:=sp[4].armeen;
+   str(x,s);
+   outtextxy((d*16),(d*15),s);
+     x:=sp[5].armeen;
+   str(x,s);
+  outtextxy((d*24),(d*17),s);
+    x:=sp[6].armeen;
+   str(x,s);
+  outtextxy((d*16),(d*25),s);
+    x:=sp[7].armeen;
+   str(x,s);
+  outtextxy((d*4),(d*22),s);
+    x:=sp[8].armeen;
+   str(x,s);
+  outtextxy((d*19),(d*9),s);
+    x:=sp[9].armeen;
+   str(x,s);
+  outtextxy((d*5),(d*30),s);
+  setcolor(white);
+    x:=sp[10].armeen;
+   str(x,s);
+  outtextxy((d*7),(d*41),s);
+    x:=sp[12].armeen;
+   str(x,s);
+  outtextxy((d*2),(d*48),s);
+    x:=sp[11].armeen;
+   str(x,s);
+  outtextxy((d*10),(d*47),s);
+     x:=sp[13].armeen;
+   str(x,s);
+   outtextxy((d*5),(d*60),s);
+     x:=sp[14].armeen;
+   str(x,s);
+  outtextxy((d*40),(d*47),s);
+    x:=sp[15].armeen;
+   str(x,s);
+  outtextxy((d*33),(d*51),s);
+    x:=sp[16].armeen;
+   str(x,s);
+  outtextxy((d*45),(d*52),s);
+     x:=sp[17].armeen;
+   str(x,s);
+ outtextxy((d*41),(d*57),s);
+     x:=sp[18].armeen;
+   str(x,s);
+ outtextxy((d*43),(d*63),s);
+     x:=sp[19].armeen;
+   str(x,s);
+ outtextxy((d*53),(d*64),s);
+      x:=sp[20].armeen;
+   str(x,s);
+ outtextxy((d*37),(d*14),s);
+      x:=sp[21].armeen;
+   str(x,s);
+ outtextxy((d*41),(d*19),s);
+   x:=sp[22].armeen;
+   str(x,s);
+  outtextxy((d*48),(d*21),s);
+    x:=sp[23].armeen;
+   str(x,s);
+  outtextxy((d*34),(d*29),s);
+     x:=sp[24].armeen;
+   str(x,s);
+ outtextxy((d*40),(d*29),s);
+    x:=sp[25].armeen;
+   str(x,s);
+ outtextxy((d*40),(d*35),s);
+     x:=sp[26].armeen;
+   str(x,s);
+ outtextxy((d*35),(d*35),s);
+    x:=sp[27].armeen;
+   str(x,s);
+ outtextxy((d*72),(d*52),s);
+    x:=sp[28].armeen;
+   str(x,s);
+ outtextxy((d*77),(d*54),s);
+    x:=sp[29].armeen;
+   str(x,s);
+ outtextxy((d*70),(d*62),s);
+    x:=sp[30].armeen;
+   str(x,s);
+ outtextxy((d*76),(d*61),s);
+  setcolor(black);
+   x:=sp[31].armeen;
+   str(x,s);
+ outtextxy((d*73),(d*10),s);
+    x:=sp[32].armeen;
+   str(x,s);
+ outtextxy((d*65),(d*10),s);
+    x:=sp[33].armeen;
+   str(x,s);
+ outtextxy((d*58),(d*18),s);
+    x:=sp[34].armeen;
+   str(x,s);
+  outtextxy((d*68),(d*20),s);
+   x:=sp[35].armeen;
+   str(x,s);
+ outtextxy((d*76),(d*22),s);
+    x:=sp[36].armeen;
+   str(x,s);
+  outtextxy((d*76),(d*35),s);
+    x:=sp[37].armeen;
+   str(x,s);
+ outtextxy((d*66),(d*31),s);
+     x:=sp[38].armeen;
+   str(x,s);
+  outtextxy((d*54),(d*31),s);
+    x:=sp[39].armeen;
+   str(x,s);
+ outtextxy((d*62),(d*36),s);
+   x:=sp[40].armeen;
+   str(x,s);
+ outtextxy((d*50),(d*40),s);
+   x:=sp[41].armeen;
+   str(x,s);
+ outtextxy((d*56),(d*43),s);
+   x:=sp[42].armeen;
+   str(x,s);
+ outtextxy((d*64),(d*44),s);
+end;
+
+procedure ausgabe(sp:tSpielfeld);
+   {Risk_neu.PAS}
+
+{Grafik fÅr Risikospiel (c)1998 by Daniel Gerritz }
+const
+
+ {Nordamerika Anfang}
+   rechteck: array[1..4] of PointType = ((X:(d*0); Y: (d*0)),
+      (X:(639); Y:(d*0)),(X:(639); Y: (d*75)),(x:(d*0);y:(d*75)));
+   rechts1: array[1..5] of PointType = ((X:(d*82); Y: (d*0)),
+      (X:(639); Y:(0)),(X:(639); Y: (445)),(x:(d*82);y:445),(X:(d*82); Y: (d*0)));
+   rechts2: array[1..5] of PointType = ((X:(0); Y: (d*75)),
+      (X:(639); Y:(d*75)),(X:(639); Y: (479)),(x:(0);y:479),(X:(0); Y: (d*75)));
+   kontifeld: array[1..5] of PointType = ((X:(d*83); Y: (d*8)),
+      (X:(632); Y:(d*8)),(X:(632); Y: (400)),(x:(d*83);y:400),(X:(d*83); Y: (d*8)));
+
+
+ alaska: array[1..8] of PointType = ((X:(d*5); Y: 0), (X:(d*8); Y:(d*1)),
+    (X:(d*8); Y: (d*10)), (X: (d*5); Y: (d*13)), (X:(d*3);Y:(d*14)),
+(X:(d*4);Y:(d*10)), (X: 0; Y: (d*5)),(X:(d*5);y:0));
+ nwterri: array[1..8] of PointType = ((X:(d*8); Y: (d*1)), (X:(d*12);
+Y:(d*4)),
+    (X: (d*14); Y: (d*7)), (X:  (d*18); Y: (d*7)), (X: (d*17);Y:(d*11)),
+(X:(d*10);Y:(d*11)), (X: (d*8); Y: (d*10)),
+    (x:(d*8);y:(d*1)));
+ alberta: array[1..9] of PointType = ((X: (d*3); Y: (d*14)), (X:(d*5);
+Y:(d*13)),
+    (X:(d*8); Y: (d*10)), (X: (d*10); Y:(d*11)), (X: (d*15);Y:(d*11)),
+(X:(d*14);Y:(d*20)), (X: (d*9); Y: (d*19)),
+    (X: (d*3); Y: (d*18)),(x:(d*3);y:(d*14)));
+ ontario: array[1..11] of PointType = ((X: (d*15); Y: (d*11)), (X:(d*17);
+Y:(d*11)),
+    (X: (d*20); Y: (d*12)), (X:  (d*19); Y: (d*15)), (X: (d*20);Y:(d*17)),
+(X:(d*23);Y:(d*18)), (X: (d*22); Y: (d*23)),
+    (X: (d*17); Y: (d*21)),
+    (X: (d*15); Y: (d*21)), (X: (d*14); Y: (d*20)),(x:(d*15);y:(d*11)));
+ gr1: array[1..7] of PointType = ((X: (d*18); Y: (d*7)), (X:(d*22); Y:(d*5)),
+    (X: (d*24); Y: (d*8)), (X:  (d*24); Y: (d*10)), (X: (d*20);Y:(d*12)),
+(X:(d*17);Y:(d*11)),
+    (X: (d*18); Y: (d*7)));
+ gr2: array[1..12] of PointType = ((X: (d*25); Y: (d*8)), (X:(d*25);
+Y:(d*10)),
+    (X: (d*28); Y: (d*13)), (X:  (d*29); Y: (d*9)), (X: (d*28);Y:(d*4)),
+(X:(d*26);Y:(d*1)),
+    (X: (d*24); Y:
+(d*1)),(x:(d*23);y:0),(x:(d*22);y:0),(x:(d*23);y:(d*4)),(x:(d*26);y:(d*4)),(x:(d*25);y:(d*8)));
+ quebeck: array[1..9] of PointType = ((X: (d*23); Y: (d*18)), (X:(d*23);
+Y:(d*14)),
+    (X: (d*25); Y: (d*13)), (X:  (d*28); Y: (d*15)), (X: (d*28);Y:(d*17)),
+(X:(d*30);Y:(d*19)),
+    (X: (d*25); Y: (d*23)),(x:(d*22);y:(d*23)),(x:(d*23);y:(d*18)));
+ weststaaten: array[1..13] of PointType = ((X: 0; Y: (d*24)), (X:(d*3);
+Y:(d*18)),
+    (X: (d*9); Y: (d*19)), (X:  (d*14); Y: (d*20)), (X: (d*15);Y:(d*21)),
+(X:(d*15);Y:(d*24)),
+    (X: (d*13); Y:
+(d*25)),(x:(d*11);y:(d*25)),(x:(d*9);y:(d*28)),(x:(d*8);y:(d*28)),(x:(d*5);y:(d*27)),
+    (x:(d*1);y:(d*27)),(x:0;y:(d*24)));
+  oststaaten: array[1..15] of PointType = ((X: (d*15); Y: (d*21)),
+(X:(d*17); Y:(d*21)),
+    (X: (d*22); Y: (d*23)), (X:  (d*25); Y: (d*23)), (X: (d*26);Y:(d*25)),
+(X:(d*17);Y:(d*28)),
+    (X: (d*14); Y:
+(d*30)),(x:(d*14);y:(d*33)),(x:(d*12);y:(d*30)),(x:(d*10);y:(d*30)),(x:(d*9);y:(d*28)),
+   
+(x:(d*11);y:(d*25)),(x:(d*13);y:(d*25)),(x:(d*15);y:(d*24)),(x:(d*15);y:(d*21)));
+  mittelamerika: array[1..13] of PointType = ((X: (d*1); Y: (d*27)),
+(X:(d*5); Y:(d*27)),
+    (X: (d*8); Y: (d*28)), (X:  (d*9); Y: (d*28)), (X: (d*10);Y:(d*30)),
+(X:(d*8);Y:(d*31)),
+    (X: (d*8); Y:
+(d*33)),(x:(d*9);y:(d*33)),(x:(d*10);y:(d*37)),(x:(d*9);y:(d*38)),(x:(d*6);y:(d*35)),
+    (x:(d*4);y:(d*31)),(x:(d*1);y:(d*27)));
+  {Nordamerika Ende}
+  {SÅdamerika Anfang}
+
+   venezuela: array[1..15] of PointType = ((X: (d*10); Y: (d*38)), (X:(d*12);
+Y:(d*39)),
+    (X: (d*14); Y: (d*41)), (X:  (d*14); Y: (d*42)), (X: (d*12);Y:(d*43)),
+(X:(d*10);Y:(d*44)),
+    (X: (d*7); Y:
+(d*44)),(x:(d*6);y:(d*46)),(x:(d*5);y:(d*45)),(x:(d*3);y:(d*45)),(x:(d*1);y:(d*44)),
+   
+(x:(d*2);y:(d*42)),(x:(d*4);y:(d*40)),(x:(d*7);y:(d*39)),(x:(d*10);y:(d*38)));
+   peru: array[1..17] of PointType = ((X: (d*1); Y: (d*44)), (X:(d*3);
+Y:(d*45)),
+    (X: (d*5); Y: (d*45)), (X:  (d*6); Y: (d*46)), (X: (d*6);Y:(d*47)),
+(X:(d*7);Y:(d*50)),
+    (X: (d*9); Y:
+(d*53)),(x:(d*10);y:(d*55)),(x:(d*9);y:(d*57)),(x:(d*6);y:(d*57)),(x:(d*4);y:(d*56)),
+
+(x:(d*4);y:(d*54)),(x:(d*2);y:(d*53)),(x:(d*1);y:(d*51)),(x:(d*1);y:(d*49)),(x:(d*0);y:(d*46)),
+    (x:(d*1);y:(d*44)));
+   brasilien: array[1..18] of PointType= ((x:(d*6);y:(d*46)),
+(x:(d*6 );y:(d*47)), (x:(d*7 );y:(d*50)), (x:(d*9);y:(d*53)),
+(x:(d*10);y:(d*55)), (x:(d*9 );y:(d*57)), (x:(d*10);y:(d*58)),
+(x:(d*11);y:(d*60)), (x:(d*12);y:(d*61)), (x:(d*13);y:(d*61)),
+(x:(d*14);y:(d*59)), (x:(d*18);y:(d*55)), (x:(d*20); y:(d*49)),
+(x:(d*18);y:(d*46)), (x:(d*14);y:(d*42)), (x:(d*10); y:(d*44)),
+(x:(d*7 );y:(d*44)), (x:(d*6 );y:(d*46)));
+argentinien: array[1..22] of PointType=  ((x:(d*4 );y:(d*56)),
+(x:(d*6 );y:(d*57)), (x:(d*9 );y:(d*57)), (x:(d*10);y:(d*58)),
+(x:(d*11);y:(d*60)), (x:(d*12);y:(d*61)), (x:(d*13);y:(d*61)),
+(x:(d*12);y:(d*63)), (x:(d*9 );y:(d*65)), (x:(d*5 );y:(d*67)),
+(x:(d*3 );y:(d*69)), (x:(d*3 );y:(d*70)), (x:(d*2 );y:(d*70)),
+(x:(d*2 );y:(d*74)), (x:(d*0 );y:(d*72)), (x:(d*0 );y:(d*70)),
+(x:(d*1 );y:(d*68)), (x:(d*1 );y:(d*66)), (x:(d*2 );y:(d*63)),
+(x:(d*3 );y:(d*61)), (x:(d*4 );y:(d*58)), (x:(d*4 );y:(d*56)));
+{Ende SÅdamerika}
+{Anfang Europa}
+island:array[1..11] of Pointtype=((x:(d*37);y:(d*12)),
+(x:(d*39);y:(d*13)),  (x:(d*39);y:(d*12)),  (x:(d*40);y:(d*12)),
+(x:(d*41);y:(d*13)), (x:(d*41);y:(d*15)), (x:(d*40);y:(d*16)),
+(x:(d*38); y:(d*17)), (x:(d*37);y:(d*16)), (x:(d*36);y:(d*14)),
+ (x:(d*37);y:(d*12)));
+skandinavien:array[1..19] of Pointtype=((x:(d*37);y:(d*22)),
+(x:(d*38);y:(d*22)),  (x:(d*39);y:(d*21)),  (x:(d*40);y:(d*19)),
+(x:(d*41);y:(d*16)), (x:(d*42);y:(d*15)),  (x:(d*44);y:(d*14)),
+(x:(d*45);y:(d*14)), (x:(d*44);y:(d*17)), (x:(d*44);y:(d*19)),
+(x:(d*45);y:(d*22)), (x:(d*45);y:(d*24)),   (x:(d*43);y:(d*26)),
+(x:(d*43);y:(d*22)), (x:(d*42);y:(d*26)),   (x:(d*40);y:(d*26)),
+(x:(d*38);y:(d*27)), (x:(d*37);y:(d*25)),    (x:(d*37);y:(d*22)));
+grossbritannien: array[1..12] of Pointtype=((x:(d*32);y:(d*30)),
+ (x:(d*33);y:(d*28)),  (x:(d*34);y:(d*27)),  (x:(d*36);y:(d*25)),
+(x:(d*37);y:(d*26)), (x:(d*36);y:(d*28)), (x:(d*36);y:(d*29)),
+ (x:(d*37); y:(d*30)), (x:(d*37);y:(d*31)), (x:(d*35);y:(d*32)),
+(x:(d*34);y:(d*32)), (x:(d*32);y:(d*30)));
+mitteleuropa:array[1..11] of Pointtype=((x:(d*36);y:(d*32)),
+(x:(d*38);y:(d*30)),  (x:(d*39);y:(d*28)),  (x:(d*40);y:(d*27)),
+(x:(d*43);y:(d*26)), (x:(d*43);y:(d*30)), (x:(d*42);y:(d*31)),
+ (x:(d*43); y:(d*32)), (x:(d*42);y:(d*33)), (x:(d*38);y:(d*33)),
+(x:(d*36);y:(d*32)));
+westeuropa:array[1..16] of Pointtype=    ((x:(d*30);y:(d*38)),
+(x:(d*31);y:(d*37)), (x:(d*33);y:(d*37)), (x:(d*34);y:(d*36)),
+(x:(d*33);y:(d*34)), (x:(d*33);y:(d*33)), (x:(d*34);y:(d*33)),
+(x:(d*36);y:(d*32)), (x:(d*38);y:(d*33)), (x:(d*39);y:(d*38)),
+(x:(d*36);y:(d*38)), (x:(d*36);y:(d*40)), (x:(d*35);y:(d*42)),
+(x:(d*31);y:(d*42)), (x:(d*30);y:(d*41)), (x:(d*30);y:(d*38)));
+suedeuropa:array[1..19] of Pointtype=((x:(d*39);y:(d*38)),
+(x:(d*41);y:(d*38)), (x:(d*41);y:(d*40)), (x:(d*40);y:(d*41)),
+(x:(d*39);y:(d*41)), (x:(d*39);y:(d*42)), (x:(d*41); y:(d*42)),
+(x:(d*42);y:(d*41)), (x:(d*43);y:(d*40)), (x:(d*43);y:(d*38)),
+(x:(d*44);y:(d*39)), (x:(d*45);y:(d*39)), (x:(d*45);y:(d*36)),
+(x:(d*46);y:(d*34)), (x:(d*44);y:(d*33)), (x:(d*43);y:(d*32)),
+(x:(d*42);y:(d*33)), (x:(d*38);y:(d*33)), (x:(d*39);y:(d*38)));
+ukraine:array[1..34] of Pointtype=((x:(d*(15+30));y:(d*(12+2))),
+(x:(d*(17+30));y:(d*(12+2))), (x:(d*(18+30));y:(d*(12+4))),
+(x:(d*(18+30));y:(d*(12+6))), (x:(d*(19+30));y:(d*(12+5))),
+(x:(d*(20+30));y:(d*(12+5))), (x:(d*(21+30));y:(d*(12+4))),
+(x:(d*(22+30));y:(d*(12+4))), (x:(d*(23+30));y:(d*(12+3))),
+(x:(d*(24+30));y:(d*(12+2))), (x:(d*(25+30));y:(d*(12+2))),
+(x:(d*(26+30));y:(d*(12+0))), (x:(d*(27+30));y:(d*(12+1))),
+(x:(d*(27+30));y:(d*(12+5))), (x:(d*(26+30));y:(d*(12+7))),
+(x:(d*(25+30));y:(d*(12+8))), (x:(d*(25+30));y:(d*(12+13))),
+(x:(d*(24+30));y:(d*(12+15))), (x:(d*(22+30));y:(d*(12+17))),
+(x:(d*(21+30));y:(d*(12+17))), (x:(d*(21+30));y:(d*(12+22))),
+(x:(d*(18+30));y:(d*(12+22))), (x:(d*(17+30));y:(d*(12+21))),
+(x:(d*(16+30));y:(d*(12+22))), (x:(d*(14+30));y:(d*(12+21))),
+(x:(d*(13+30));y:(d*(12+20))), (x:(d*(12+30));y:(d*(12+19))),
+(x:(d*(13+30));y:(d*(12+18))), (x:(d*(13+30));y:(d*(12+14))),
+(x:(d*(15+30));y:(d*(12+12))), (x:(d*(15+30));y:(d*(12+10))),
+(x:(d*(14+30));y:(d*(12+7))), (x:(d*(14+30));y:(d*(12+5))),
+(x:(d*(15+30));y:(d*(12+2))));
+{Ende Europa}
+{Anfang Afrika}
+nordwestafrika:array[1..16] of Pointtype=((x:(d*(4+29));y:(d*(43+1))),
+(x:(d*(11+29));y:(d*(43+1))), (x:(d*(11+29));y:(d*(43+2))),
+(x:(d*(9+29));y:(d*(43+3))), (x:(d*(9+29));y:(d*(43+5))),
+(x:(d*(13+29));y:(d*(43+8))), (x:(d*(13+29));y:(d*(43+11))),
+(x:(d*(10+29));y:(d*(43+14))), (x:(d*(9+29));y:(d*(43+14))),
+(x:(d*(8+29));y:(d*(43+13))), (x:(d*(4+29));y:(d*(43+13))),
+(x:(d*(2+29));y:(d*(43+12))), (x:(d*(0+29));y:(d*(43+9))),
+(x:(d*(0+29));y:(d*(43+6))), (x:(d*(1+29));y:(d*(43+4))),
+ (x:(d*(4+29));y:(d*(43+1))));
+aegypten:array[1..14] of Pointtype=((x:(d*(11+29));y:(d*(43+1))),
+(x:(d*(15+29));y:(d*(43+1))), (x:(d*(16+29));y:(d*(43+0))),
+(x:(d*(17+29));y:(d*(43+0))), (x:(d*(18+29));y:(d*(43+2))),
+(x:(d*(19+29));y:(d*(43+4))), (x:(d*(17+29));y:(d*(43+5))),
+(x:(d*(15+29));y:(d*(43+5))), (x:(d*(13+29));y:(d*(43+7))),
+(x:(d*(13+29));y:(d*(43+8))), (x:(d*(9+29));y:(d*(43+5))),
+(x:(d*(9+29));y:(d*(43+3))), (x:(d*(11+29));y:(d*(43+2))),
+(x:(d*(11+29));y:(d*(43+1))));
+kongo:array[1..11] of Pointtype=((x:(d*(9+29));y:(d*(43+14))),
+(x:(d*(10+29));y:(d*(43+14))), (x:(d*(11+29));y:(d*(43+13))), 
+(x:(d*(12+29));y:(d*(43+12))), (x:(d*(13+29));y:(d*(43+11))),
+(x:(d*(16+29));y:(d*(43+11))), (x:(d*(15+29));y:(d*(43+15))),
+(x:(d*(14+29));y:(d*(43+17))), (x:(d*(12+29));y:(d*(43+16))),
+(x:(d*(10+29));y:(d*(43+16))), (x:(d*(9+29));y:(d*(43+14))));
+suedafrika:array[1..17] of Pointtype=((x:(d*(10+29));y:(d*(43+16))),
+(x:(d*(12+29));y:(d*(43+16))), (x:(d*(14+29));y:(d*(43+17))), 
+(x:(d*(15+29));y:(d*(43+15))), (x:(d*(16+29));y:(d*(43+15))),
+(x:(d*(17+29));y:(d*(43+17))), (x:(d*(19+29));y:(d*(43+16))),
+(x:(d*(21+29));y:(d*(43+16))), (x:(d*(20+29));y:(d*(43+18))),
+(x:(d*(19+29));y:(d*(43+20))), (x:(d*(19+29));y:(d*(43+22))),
+(x:(d*(18+29));y:(d*(43+24))), (x:(d*(15+29));y:(d*(43+26))),
+(x:(d*(13+29));y:(d*(43+25))), (x:(d*(11+29));y:(d*(43+21))),
+(x:(d*(11+29));y:(d*(43+18))), (x:(d*(10+29));y:(d*(43+16))));
+ostafrika:array[1..18] of Pointtype=((x:(d*(13+29));y:(d*(43+8))),
+(x:(d*(13+29));y:(d*(43+7))), (x:(d*(15+29));y:(d*(43+5))),
+(x:(d*(17+29));y:(d*(43+5))), (x:(d*(19+29));y:(d*(43+4))),
+(x:(d*(20+29));y:(d*(43+6))), (x:(d*(21+29));y:(d*(43+7))),
+(x:(d*(23+29));y:(d*(43+7))), (x:(d*(22+29));y:(d*(43+10))),
+(x:(d*(21+29));y:(d*(43+11))), (x:(d*(21+29));y:(d*(43+16))),
+(x:(d*(19+29));y:(d*(43+16))), (x:(d*(17+29));y:(d*(43+17))), 
+(x:(d*(16+29));y:(d*(43+15))), (x:(d*(15+29));y:(d*(43+15))), 
+(x:(d*(16+29));y:(d*(43+11))), (x:(d*(13+29));y:(d*(43+11))),
+(x:(d*(13+29));y:(d*(43+8))));
+madagaskar:array[1..11] of Pointtype=((x:(d*(26+29));y:(d*(43+15))),
+(x:(d*(27+29));y:(d*(43+19))), (x:(d*(26+29));y:(d*(43+22))),
+(x:(d*(26+29));y:(d*(43+23))), (x:(d*(25+29));y:(d*(43+24))),
+(x:(d*(24+29));y:(d*(43+24))), (x:(d*(23+29));y:(d*(43+23))),
+(x:(d*(23+29));y:(d*(43+21))), (x:(d*(24+29));y:(d*(43+18))),
+(x:(d*(25+29));y:(d*(43+16))), (x:(d*(26+29));y:(d*(43+15))));
+{Ende Afrika}
+{Anfang Asien}
+mittlererosten:array[1..24] of Pointtype=((x:(d*(51));y:(d*(37))),
+(x:(d*(54));y:(d*(37))), (x:(d*(56));y:(d*(40))),
+(x:(d*(54));y:(d*(41))), (x:(d*(53));y:(d*(43))),
+(x:(d*(55));y:(d*(45))), (x:(d*(52));y:(d*(44))),
+(x:(d*(54));y:(d*(46))), (x:(d*(54));y:(d*(47))),
+(x:(d*(52));y:(d*(49))), (x:(d*(50));y:(d*(49))),
+(x:(d*(49));y:(d*(46))), (x:(d*(48));y:(d*(44))),
+(x:(d*(46));y:(d*(43))), (x:(d*(46));y:(d*(42))),
+(x:(d*(48));y:(d*(41))), (x:(d*(48));y:(d*(38))),
+(x:(d*(46));y:(d*(38))), (x:(d*(45));y:(d*(37))),
+(x:(d*(45));y:(d*(36))), (x:(d*(46));y:(d*(35))),
+(x:(d*(48));y:(d*(35))), (x:(d*(50));y:(d*(37))),
+(x:(d*(51));y:(d*(37))));
+
+ural: array[1..21] of PointType= ((x:(d*(14+45));y:(d*(5+1))),
+(x:(d*(14+45));y:(d*(5+8))), (x:(d*(13+45));y:(d*(5+9))),
+(x:(d*(15+45));y:(d*(5+9))),    (x:(d*(16+45));y:(d*(5+7))),
+(x:(d*(16+45));y:(d*(5+10))), (x:(d*(17+45));y:(d*(5+8))),
+(x:(d*(18+45));y:(d*(5+27))), (x:(d*(16+45));y:(d*(5+28))),
+(x:(d*(15+45));y:(d*(5+25))),  (x:(d*(13+45));y:(d*(5+22))),
+(x:(d*(10+45));y:(d*(5+20))), (x:(d*(10+45));y:(d*(5+15))), 
+(x:(d*(11+45));y:(d*(5+14))), (x:(d*(12+45));y:(d*(5+12))),
+(x:(d*(12+45));y:(d*(5+8))),     (x:(d*(11+45));y:(d*(5+7))),
+(x:(d*(13+45));y:(d*(5+6))),   (x:(d*(12+45));y:(d*(5+5))),
+(x:(d*(13+45));y:(d*(5+2))), (x:(d*(14+45));y:(d*(5+1))));
+afghanistan: array[1..14] of PointType= ((x:(d*(45+10));y:(d*(5+20))),
+(x:(d*(45+13));y:(d*(5+22))), (x:(d*(45+15));y:(d*(5+25))),
+(x:(d*(45+16));y:(d*(5+28))), (x:(d*(45+14));y:(d*(5+30))),
+(x:(d*(45+13));y:(d*(5+32))), (x:(d*(45+13));y:(d*(5+34))),
+(x:(d*(45+11));y:(d*(5+35))), (x:(d*(45+9));y:(d*(5+32))),
+(x:(d*(45+6));y:(d*(5+32))), (x:(d*(45+6));y:(d*(5+24))),
+(x:(d*(45+7));y:(d*(5+24))), (x:(d*(45+9));y:(d*(5+22))),
+(x:(d*(45+10));y:(d*(5+20))));
+indien: array[1..15] of PointType= ((x:(d*(45+11));y:(d*(5+35))),
+(x:(d*(45+13));y:(d*(5+34))), (x:(d*(45+16));y:(d*(5+34))),
+(x:(d*(45+18));y:(d*(5+37))), (x:(d*(45+17));y:(d*(5+38))),
+(x:(d*(45+17));y:(d*(5+40))), (x:(d*(45+16));y:(d*(5+41))),
+(x:(d*(45+15));y:(d*(5+45))), (x:(d*(45+14));y:(d*(5+46))),
+(x:(d*(45+12));y:(d*(5+44))), (x:(d*(45+11));y:(d*(5+41))),
+(x:(d*(45+10));y:(d*(5+40))), (x:(d*(45+8));y:(d*(5+38))),
+(x:(d*(45+9));y:(d*(5+36))), (x:(d*(45+11));y:(d*(5+35))));
+china: array[1..18] of PointType= ((x:(d*(45+13));y:(d*(5+34))),
+(x:(d*(45+16));y:(d*(5+34))), (x:(d*(45+18));y:(d*(5+37))),
+(x:(d*(45+20));y:(d*(5+35))), (x:(d*(45+21));y:(d*(5+36))),
+(x:(d*(45+23));y:(d*(5+38))), (x:(d*(45+24));y:(d*(5+37))),
+(x:(d*(45+25));y:(d*(5+36))), (x:(d*(45+26));y:(d*(5+34))),
+(x:(d*(45+25));y:(d*(5+31))), (x:(d*(45+24));y:(d*(5+29))),
+(x:(d*(45+22));y:(d*(5+29))), (x:(d*(45+20));y:(d*(5+27))),
+(x:(d*(45+18));y:(d*(5+27))), (x:(d*(45+16));y:(d*(5+28))),
+(x:(d*(45+14));y:(d*(5+30))), (x:(d*(45+13));y:(d*(5+32))),
+(x:(d*(45+13));y:(d*(5+34))));
+siam: array[1..17] of PointType= ((x:(d*(45+18));y:(d*(5+37))),
+(x:(d*(45+20));y:(d*(5+35))), (x:(d*(45+21));y:(d*(5+36))),
+(x:(d*(45+23));y:(d*(5+38))), (x:(d*(45+22));y:(d*(5+39))),
+(x:(d*(45+23));y:(d*(5+40))), (x:(d*(45+22));y:(d*(5+41))),
+(x:(d*(45+21));y:(d*(5+42))), (x:(d*(45+20));y:(d*(5+42))),
+(x:(d*(45+21));y:(d*(5+43))), (x:(d*(45+21));y:(d*(5+45))),
+(x:(d*(45+20));y:(d*(5+45))), (x:(d*(45+19));y:(d*(5+43))),
+(x:(d*(45+18));y:(d*(5+41))), (x:(d*(45+17));y:(d*(5+41))),
+(x:(d*(45+17));y:(d*(5+38))), (x:(d*(45+18));y:(d*(5+37))));
+sibirien: array[1..26] of PointType= ((x:(d*(45+17));y:(d*(5+8))),
+(x:(d*(45+18));y:(d*(5+27))), (x:(d*(45+19));y:(d*(5+27))),
+(x:(d*(45+19));y:(d*(5+25))), (x:(d*(45+20));y:(d*(5+23))),
+(x:(d*(45+20));y:(d*(5+21))), (x:(d*(45+22));y:(d*(5+19))),
+(x:(d*(45+23));y:(d*(5+17))), (x:(d*(45+22));y:(d*(5+15))),
+(x:(d*(45+22));y:(d*(5+13))), (x:(d*(45+23));y:(d*(5+10))),
+(x:(d*(45+25));y:(d*(5+9))), (x:(d*(45+25));y:(d*(5+6))),
+(x:(d*(45+27));y:(d*(5+4))), (x:(d*(45+27));y:(d*(5+0))),
+(x:(d*(45+25));y:(d*(5+0))), (x:(d*(45+22));y:(d*(5+1))),
+(x:(d*(45+19));y:(d*(5+1))), (x:(d*(45+18));y:(d*(5+2))),
+(x:(d*(45+18));y:(d*(5+3))), (x:(d*(45+18));y:(d*(5+6))),
+(x:(d*(45+17));y:(d*(5+4))), (x:(d*(45+15));y:(d*(5+4))),
+(x:(d*(45+15));y:(d*(5+6))), (x:(d*(45+17));y:(d*(5+7))),
+(x:(d*(45+17));y:(d*(5+8))) );
+jakutien: array[1..18] of PointType= ((x:(d*(45+27));y:(d*(5+0))),
+(x:(d*(45+28));y:(d*(5+1))), (x:(d*(45+30));y:(d*(5+1))),
+(x:(d*(45+32));y:(d*(5+3))), (x:(d*(45+33));y:(d*(5+2))),
+(x:(d*(45+33));y:(d*(5+7))), (x:(d*(45+32));y:(d*(5+13))),
+(x:(d*(45+31));y:(d*(5+15))), (x:(d*(45+29));y:(d*(5+17))),
+(x:(d*(45+27));y:(d*(5+14))), (x:(d*(45+28));y:(d*(5+14))),
+(x:(d*(45+28));y:(d*(5+12))), (x:(d*(45+22));y:(d*(5+13))),
+(x:(d*(45+23));y:(d*(5+10))), (x:(d*(45+25));y:(d*(5+9))),
+ (x:(d*(45+25));y:(d*(5+6))),
+(x:(d*(45+27));y:(d*(5+4))), (x:(d*(45+27));y:(d*(5+0))));
+irkutsk: array[1..15] of PointType= ((x:(d*(45+22));y:(d*(5+13))),
+(x:(d*(45+28));y:(d*(5+12))), (x:(d*(45+28));y:(d*(5+14))),
+(x:(d*(45+27));y:(d*(5+14))), (x:(d*(45+29));y:(d*(5+17))),
+(x:(d*(45+27));y:(d*(5+20))), (x:(d*(45+25));y:(d*(5+21))),
+(x:(d*(45+25));y:(d*(5+24))), (x:(d*(45+19));y:(d*(5+25))),
+(x:(d*(45+20));y:(d*(5+23))), (x:(d*(45+20));y:(d*(5+21))),
+(x:(d*(45+22));y:(d*(5+19))), (x:(d*(45+23));y:(d*(5+17))),
+(x:(d*(45+22));y:(d*(5+15))), (x:(d*(45+22));y:(d*(5+13))));
+mongolei: array[1..11] of PointType= ((x:(d*(45+19));y:(d*(5+27))),
+(x:(d*(45+20));y:(d*(5+27))), (x:(d*(45+22));y:(d*(5+29))),
+(x:(d*(45+24));y:(d*(5+29))), (x:(d*(45+25));y:(d*(5+31))),
+(x:(d*(45+27));y:(d*(5+32))), (x:(d*(45+27));y:(d*(5+30))),
+(x:(d*(45+26));y:(d*(5+27))), (x:(d*(45+25));y:(d*(5+24))),
+(x:(d*(45+19));y:(d*(5+25))), (x:(d*(45+19));y:(d*(5+27))));
+kamschatka: array[1..24] of PointType= ((x:(d*(45+25));y:(d*(5+24))),
+(x:(d*(45+26));y:(d*(5+27))), (x:(d*(45+27));y:(d*(5+30))),
+(x:(d*(45+28));y:(d*(5+28))), (x:(d*(45+29));y:(d*(5+24))),
+(x:(d*(45+27));y:(d*(5+24))), (x:(d*(45+28));y:(d*(5+23))),
+(x:(d*(45+30));y:(d*(5+23))), (x:(d*(45+30));y:(d*(5+24))),
+(x:(d*(45+31));y:(d*(5+24))), (x:(d*(45+31));y:(d*(5+22))),
+(x:(d*(45+30));y:(d*(5+21))), (x:(d*(45+31));y:(d*(5+20))),
+(x:(d*(45+33));y:(d*(5+19))), (x:(d*(45+34));y:(d*(5+17))),
+(x:(d*(45+34));y:(d*(5+3))), (x:(d*(45+33));y:(d*(5+2))),
+(x:(d*(45+33));y:(d*(5+7))), (x:(d*(45+32));y:(d*(5+13))),
+(x:(d*(45+31));y:(d*(5+15))), (x:(d*(45+29));y:(d*(5+17))),
+(x:(d*(45+27));y:(d*(5+20))), (x:(d*(45+25));y:(d*(5+21))),
+(x:(d*(45+25));y:(d*(5+24))));
+japan: array[1..12] of PointType= ((x:(d*(45+28));y:(d*(5+32))),
+(x:(d*(45+29));y:(d*(5+33))), (x:(d*(45+30));y:(d*(5+33))),
+(x:(d*(45+34));y:(d*(5+31))), (x:(d*(45+34));y:(d*(5+25))),
+(x:(d*(45+33));y:(d*(5+24))), (x:(d*(45+34));y:(d*(5+24))),
+(x:(d*(45+34));y:(d*(5+22))), (x:(d*(45+32));y:(d*(5+22))),
+(x:(d*(45+32));y:(d*(5+27))), (x:(d*(45+31));y:(d*(5+28))),
+(x:(d*(45+28));y:(d*(5+32))));
+
+indo1: array[1..9] of PointType= ((x:(d*(63+10));y:(d*(44+0))),
+(x:(d*(63+9));y:(d*(44+1))), (x:(d*(63+10));y:(d*(44+2))),
+(x:(d*(63+10));y:(d*(44+5))), (x:(d*(63+11));y:(d*(44+5))),
+(x:(d*(63+12));y:(d*(44+4))), (x:(d*(63+11));y:(d*(44+2))),
+(x:(d*(63+11));y:(d*(44+1))), (x:(d*(63+10));y:(d*(44+0))));
+indonesien: array[1..13] of PointType= ((x:(d*(63+8));y:(d*(44+5))),
+(x:(d*(63+9));y:(d*(44+5))), (x:(d*(63+10));y:(d*(44+6))),
+(x:(d*(63+9));y:(d*(44+7))), (x:(d*(63+12));y:(d*(44+7))),
+(x:(d*(63+11));y:(d*(44+8))), (x:(d*(63+11));y:(d*(44+10))),
+(x:(d*(63+9));y:(d*(44+10))), (x:(d*(63+8));y:(d*(44+9))),
+(x:(d*(63+6));y:(d*(44+9))), (x:(d*(63+5));y:(d*(44+8))),
+(x:(d*(63+6));y:(d*(44+6))), (x:(d*(63+8));y:(d*(44+5))));
+indo2: array[1..11] of PointType= ((x:(d*(63+0));y:(d*(44+6))),
+(x:(d*(63+1));y:(d*(44+6))), (x:(d*(63+2));y:(d*(44+7))),
+(x:(d*(63+3));y:(d*(44+9))), (x:(d*(63+5));y:(d*(44+10))),
+(x:(d*(63+7));y:(d*(44+10))), (x:(d*(63+8));y:(d*(44+11))),
+(x:(d*(63+4));y:(d*(44+11))), (x:(d*(63+2));y:(d*(44+10))),
+(x:(d*(63+1));y:(d*(44+8))), (x:(d*(63+0));y:(d*(44+6))));
+neuguinea: array[1..10] of PointType= ((x:(d*(63+13));y:(d*(44+8))),
+(x:(d*(63+14));y:(d*(44+9))), (x:(d*(63+15));y:(d*(44+9))),
+(x:(d*(63+17));y:(d*(44+11))), (x:(d*(63+17));y:(d*(44+12))),
+(x:(d*(63+15));y:(d*(44+12))), (x:(d*(63+13));y:(d*(44+11))),
+(x:(d*(63+12));y:(d*(44+10))), (x:(d*(63+12));y:(d*(44+9))),
+(x:(d*(63+13));y:(d*(44+8))));
+westaustralien: array[1..10] of PointType= ((x:(d*(63+5));y:(d*(44+17))),
+(x:(d*(63+5));y:(d*(44+21))), (x:(d*(63+7));y:(d*(44+23))),
+(x:(d*(63+8));y:(d*(44+23))), (x:(d*(63+12));y:(d*(44+21))),
+(x:(d*(63+10));y:(d*(44+17))), (x:(d*(63+12));y:(d*(44+16))),
+(x:(d*(63+11));y:(d*(44+13))), (x:(d*(63+9));y:(d*(44+13))),
+(x:(d*(63+5));y:(d*(44+17))));
+ostaustralien: array[1..15] of PointType= ((x:(d*(63+11));y:(d*(44+13))),
+(x:(d*(63+12));y:(d*(44+12))), (x:(d*(63+13));y:(d*(44+13))),
+(x:(d*(63+15));y:(d*(44+13))), (x:(d*(63+15));y:(d*(44+14))),
+(x:(d*(63+16));y:(d*(44+15))), (x:(d*(63+17));y:(d*(44+17))),
+(x:(d*(63+17));y:(d*(44+19))), (x:(d*(63+16));y:(d*(44+21))),
+(x:(d*(63+15));y:(d*(44+23))), (x:(d*(63+13));y:(d*(44+22))),
+(x:(d*(63+12));y:(d*(44+21))), (x:(d*(63+10));y:(d*(44+17))),
+(x:(d*(63+12));y:(d*(44+16))), (x:(d*(63+11));y:(d*(44+13))));
+
+
+
+begin
+    setcolor(black);
+
+  setfillstyle(1,black);
+  FillPoly(SizeOf(rechteck) div SizeOf(PointType),rechteck );
+   setfillstyle(1,green);
+  FillPoly(SizeOf(rechts1) div SizeOf(PointType),rechts1 );
+   setcolor(yellow);
+   setlinestyle(0,0,2);
+  drawPoly(SizeOf(rechts1) div SizeOf(PointType),rechts1 );
+    setfillstyle(1,green);
+  FillPoly(SizeOf(rechts2) div SizeOf(PointType),rechts2 );
+   setcolor(yellow);
+   setlinestyle(0,0,2);
+  drawPoly(SizeOf(rechts2) div SizeOf(PointType),rechts2 );
+   drawPoly(SizeOf(kontifeld) div SizeOf(PointType),kontifeld );
+  setlinestyle(0,0,1);
+  setBkcolor(black);
+  setcolor(black);
+  setfillstyle(1,14);
+ FillPoly(SizeOf(alaska) div SizeOf(PointType), Alaska);
+  FillPoly(SizeOf(nwterri) div SizeOf(PointType), Nwterri);
+  FillPoly(SizeOf(alberta) div SizeOf(PointType), alberta);
+ FillPoly(SizeOf(ontario) div SizeOf(PointType), ontario);
+  FillPoly(SizeOf(gr1) div SizeOf(PointType), gr1);
+  FillPoly(SizeOf(gr2) div SizeOf(PointType), gr2);
+  FillPoly(SizeOf(quebeck) div SizeOf(PointType), quebeck);
+  FillPoly(SizeOf(weststaaten) div SizeOf(PointType), weststaaten);
+  FillPoly(SizeOf(oststaaten) div SizeOf(PointType), oststaaten);
+  FillPoly(SizeOf(mittelamerika) div SizeOf(PointType), mittelamerika);
+   setfillstyle(1,red);
+ FillPoly(SizeOf(venezuela) div SizeOf(PointType), venezuela);
+ FillPoly(SizeOf(peru) div SizeOf(PointType), peru);
+   FillPoly(SizeOf(brasilien) div SizeOf(PointType), brasilien);
+  FillPoly(SizeOf(argentinien) div SizeOf(PointType), argentinien);
+ setfillstyle(1,9);
+FillPoly(SizeOf(island) div SizeOf(PointType), island);
+   FillPoly(SizeOf(skandinavien) div SizeOf(PointType), skandinavien);
+  FillPoly(SizeOf(mitteleuropa) div SizeOf(PointType), mitteleuropa);
+  FillPoly(SizeOf(grossbritannien) div SizeOf(PointType),grossbritannien);
+ FillPoly(SizeOf(westeuropa) div SizeOf(PointType), westeuropa);
+   FillPoly(SizeOf(suedeuropa) div SizeOf(PointType), suedeuropa);
+ FillPoly(SizeOf(ukraine) div SizeOf(PointType), ukraine);
+   setfillstyle(1,6);
+   FillPoly(SizeOf(nordwestafrika) div SizeOf(PointType),nordwestafrika);
+  FillPoly(SizeOf(aegypten) div SizeOf(PointType), aegypten);
+  FillPoly(SizeOf(kongo) div SizeOf(PointType), kongo);
+    FillPoly(SizeOf(ostafrika) div SizeOf(PointType), ostafrika);
+   FillPoly(SizeOf(suedafrika) div SizeOf(PointType), suedafrika);
+    FillPoly(SizeOf(madagaskar) div SizeOf(PointType), madagaskar);
+  setfillstyle(1,12);
+  FillPoly(SizeOf(indo1) div SizeOf(PointType), indo1);
+  FillPoly(SizeOf(indonesien) div SizeOf(PointType), indonesien);
+  FillPoly(SizeOf(indo2) div SizeOf(PointType), indo2);
+ FillPoly(SizeOf(neuguinea) div SizeOf(PointType), neuguinea);
+  FillPoly(SizeOf(westaustralien) div SizeOf(PointType),westaustralien);
+  FillPoly(SizeOf(ostaustralien) div SizeOf(PointType), ostaustralien);
+   setfillstyle(1,10);
+  FillPoly(SizeOf(ural) div SizeOf(PointType), ural);
+FillPoly(SizeOf(afghanistan) div SizeOf(PointType), afghanistan);
+   FillPoly(SizeOf(mittlererosten) div SizeOf(PointType),mittlererosten);
+ FillPoly(SizeOf(indien) div SizeOf(PointType), indien);
+   FillPoly(SizeOf(china) div SizeOf(PointType), china);
+  FillPoly(SizeOf(siam) div SizeOf(PointType), siam);
+   FillPoly(SizeOf(sibirien) div SizeOf(PointType), sibirien);
+  FillPoly(SizeOf(jakutien) div SizeOf(PointType), jakutien);
+ FillPoly(SizeOf(irkutsk) div SizeOf(PointType), irkutsk);
+   FillPoly(SizeOf(mongolei) div SizeOf(PointType), mongolei);
+ FillPoly(SizeOf(kamschatka) div SizeOf(PointType), kamschatka);
+ FillPoly(SizeOf(japan) div SizeOf(PointType), japan);
+
+
+     setcolor(black);
+  DrawPoly(SizeOf(alaska) div SizeOf(PointType), Alaska);
+  DrawPoly(SizeOf(nwterri) div SizeOf(PointType), Nwterri);
+  DrawPoly(SizeOf(alberta) div SizeOf(PointType), alberta);
+  DrawPoly(SizeOf(ontario) div SizeOf(PointType), ontario);
+  DrawPoly(SizeOf(gr1) div SizeOf(PointType), gr1);
+  DrawPoly(SizeOf(gr2) div SizeOf(PointType), gr2);
+  DrawPoly(SizeOf(quebeck) div SizeOf(PointType), quebeck);
+  DrawPoly(SizeOf(weststaaten) div SizeOf(PointType), weststaaten);
+  DrawPoly(SizeOf(oststaaten) div SizeOf(PointType), oststaaten);
+  DrawPoly(SizeOf(mittelamerika) div SizeOf(PointType),
+mittelamerika);
+  DrawPoly(SizeOf(venezuela) div SizeOf(PointType), venezuela);
+  DrawPoly(SizeOf(peru) div SizeOf(PointType), peru);
+  DrawPoly(SizeOf(brasilien) div SizeOf(PointType), brasilien);
+  DrawPoly(SizeOf(argentinien) div SizeOf(PointType), argentinien);
+
+  DrawPoly(SizeOf(island) div SizeOf(PointType), island);
+  DrawPoly(SizeOf(skandinavien) div SizeOf(PointType), skandinavien);
+  DrawPoly(SizeOf(mitteleuropa) div SizeOf(PointType), mitteleuropa);
+  DrawPoly(SizeOf(grossbritannien) div SizeOf(PointType),
+grossbritannien);
+  DrawPoly(SizeOf(westeuropa) div SizeOf(PointType), westeuropa);
+  DrawPoly(SizeOf(suedeuropa) div SizeOf(PointType), suedeuropa);
+  DrawPoly(SizeOf(ukraine) div SizeOf(PointType), ukraine);
+
+  DrawPoly(SizeOf(nordwestafrika) div SizeOf(PointType),
+nordwestafrika);
+  DrawPoly(SizeOf(aegypten) div SizeOf(PointType), aegypten);
+  DrawPoly(SizeOf(kongo) div SizeOf(PointType), kongo);
+  DrawPoly(SizeOf(ostafrika) div SizeOf(PointType), ostafrika);
+  DrawPoly(SizeOf(suedafrika) div SizeOf(PointType), suedafrika);
+  DrawPoly(SizeOf(madagaskar) div SizeOf(PointType), madagaskar);
+
+  DrawPoly(SizeOf(sibirien) div SizeOf(PointType), sibirien);
+  DrawPoly(SizeOf(jakutien) div SizeOf(PointType), jakutien);
+  DrawPoly(SizeOf(irkutsk) div SizeOf(PointType), irkutsk);
+  DrawPoly(SizeOf(mongolei) div SizeOf(PointType), mongolei);
+  DrawPoly(SizeOf(kamschatka) div SizeOf(PointType), kamschatka);
+  DrawPoly(SizeOf(japan) div SizeOf(PointType), japan);
+  DrawPoly(SizeOf(ural) div SizeOf(PointType), ural);
+  DrawPoly(SizeOf(afghanistan) div SizeOf(PointType), afghanistan);
+  DrawPoly(SizeOf(mittlererosten) div SizeOf(PointType),
+mittlererosten);
+  DrawPoly(SizeOf(indien) div SizeOf(PointType), indien);
+  DrawPoly(SizeOf(china) div SizeOf(PointType), china);
+  DrawPoly(SizeOf(siam) div SizeOf(PointType), siam);
+
+  DrawPoly(SizeOf(indo1) div SizeOf(PointType), indo1);
+  DrawPoly(SizeOf(indonesien) div SizeOf(PointType), indonesien);
+  DrawPoly(SizeOf(indo2) div SizeOf(PointType), indo2);
+  DrawPoly(SizeOf(neuguinea) div SizeOf(PointType), neuguinea);
+  DrawPoly(SizeOf(westaustralien) div SizeOf(PointType),
+westaustralien);
+  DrawPoly(SizeOf(ostaustralien) div SizeOf(PointType), ostaustralien);
+
+
+
+
+  setcolor(black);
+   settextstyle(0,0,0);
+  outtextxy((d*5),(d*  3),'01');
+   outtextxy((d*10),(d*  5),'02');
+   outtextxy((d*7),(d*14),'03');
+   outtextxy((d*16),(d*14),'04');
+  outtextxy((d*24),(d*16),'05');
+  outtextxy((d*16),(d*24),'06');
+  outtextxy((d*4),(d*21),'07');
+  outtextxy((d*19),(d*8),'08');
+  outtextxy((d*5),(d*29),'09');
+  setcolor(white);
+  outtextxy((d*7),(d*40),'10');
+  outtextxy((d*2),(d*47),'12');
+  outtextxy((d*10),(d*46),'11');
+   outtextxy((d*5),(d*59),'13');
+
+  outtextxy((d*40),(d*46),'14');
+  outtextxy((d*33),(d*50),'15');
+  outtextxy((d*45),(d*51),'16');
+ outtextxy((d*41),(d*56),'17');
+ outtextxy((d*43),(d*62),'18');
+ outtextxy((d*53),(d*63),'19');
+
+ outtextxy((d*37),(d*13),'20');
+ outtextxy((d*41),(d*18),'21');
+  outtextxy((d*48),(d*20),'22');
+  outtextxy((d*34),(d*28),'23');
+ outtextxy((d*40),(d*28),'24');
+ outtextxy((d*40),(d*34),'25');
+ outtextxy((d*35),(d*34),'26');
+
+ outtextxy((d*70),(d*51),'27');
+ outtextxy((d*76),(d*53),'28');
+ outtextxy((d*70),(d*61),'29');
+ outtextxy((d*76),(d*60),'30');
+  setcolor(black);
+ outtextxy((d*73),(d*9),'31');
+ outtextxy((d*65),(d*9),'32');
+ outtextxy((d*58),(d*17),'33');
+  outtextxy((d*68),(d*19),'34');
+ outtextxy((d*76),(d*21),'35');
+  outtextxy((d*76),(d*34),'36');
+ outtextxy((d*66),(d*30),'37');
+  outtextxy((d*54),(d*30),'38');
+ outtextxy((d*62),(d*35),'39');
+ outtextxy((d*50),(d*39),'40');
+ outtextxy((d*56),(d*42),'41');
+ outtextxy((d*64),(d*43),'42');
+
+setcolor(white);
+setlinestyle(1,0,2);
+line(d*20,d*49,d*29,d*49); {Brasilien-Nordwestafrika}
+line(d*50,d*56,d*53,d*61); {Ostafrika-Madagaskar}
+line(d*48,d*65,d*52,d*64); {SÅdafrika-Madagaskar}
+line(d*79,d*12,d*82,d*12);
+line(d*4,d*10,d*0,d*10);
+line(d*25,d*13,d*26,d*11);
+line(d*29,d*9,d*36,d*14);
+line(d*34,d*27,d*37,d*16);
+line(d*38,d*17,d*39,d*21);
+line(d*36,d*25,d*37,d*23);
+line(d*36,d*28,d*39,d*28);
+line(d*40,d*26,d*40,d*27);
+line(d*32,d*30,d*31,d*37);
+line(d*36,d*44,d*34,d*42);
+line(d*37,d*44,d*41,d*38);
+line(d*42,d*44,d*44,d*39);
+line(d*48,d*40,d*45,d*39);
+line(d*72,d*36,d*73,d*36);
+line(d*74,d*29,d*77,d*32);
+line(d*66,d*50,d*69,d*50);
+line(d*70,d*55,d*70,d*59);
+line(d*74,d*52,d*76,d*52);
+line(d*76,d*57,d*76,d*55);
+line(d*75,d*54,d*72,d*57);
+ setcolor(black);
+   settextstyle(4,0,4);
+  outtextxy((d*87),(3),'Risiko');
+   settextstyle(2,0,4);
+   outtextxy((d*83),(425),'(c)1998 Informatik GK 13');
+
+end;
+
+
+Procedure Init(var sp:tSpielfeld);
+procedure Abort(Msg : string);
+begin
+  Writeln(Msg, ': ', GraphErrorMsg(GraphResult));
+  Halt(1);
+end;
+
+
+var
+  i:byte;
+  gd,gm:integer;  {FÅr Grafiktreiber}
+begin
+ sp[1].Name:='Alaska';
+ sp[2].Name:='NW-Territorium';
+ sp[3].Name:='Alberta';
+ sp[4].Name:='Ontario';
+ sp[5].Name:='Quebeck';
+ sp[6].Name:='Oststaaten';
+ sp[7].Name:='Weststaaten';
+ sp[8].Name:='Grînland';
+ sp[9].Name:='Mittelamerika';    {Nordamerika 1-9}
+ sp[10].Name:='Venezuela';
+ sp[11].Name:='Brasilien';
+ sp[12].Name:='Peru';
+ sp[13].Name:='Argentinien';   {Suedamerika 10-13}
+ sp[14].Name:='égypten';
+ sp[15].Name:='NW-Afrika';
+ sp[16].Name:='Ostafrika';
+ sp[17].Name:='Kongo';
+ sp[18].Name:='SÅdafrika';
+ sp[19].Name:='Madagaskar';     {Afrika 14-19}
+ sp[20].Name:='Island';
+ sp[21].Name:='Skandinavien';
+ sp[22].Name:='Ukraine';
+ sp[23].Name:='Britannien';
+ sp[24].Name:='Mitteleuropa';
+ sp[25].Name:='SÅdeuropa';
+ sp[26].Name:='Westeuropa';    {Europa 20-26}
+ sp[27].Name:='Indonesien';
+ sp[28].Name:='Neuguinea';
+ sp[29].Name:='Westaustralien';
+ sp[30].Name:='Ostaustralien';  {Australien 27-30}
+ sp[31].Name:='Jakutien';
+ sp[32].Name:='Sibirien';
+ sp[33].Name:='Ural';
+ sp[34].Name:='Irkutsk';
+ sp[35].Name:='Kamtschatka';
+ sp[36].Name:='Japan';
+ sp[37].Name:='Mongolei';
+ sp[38].Name:='Afghanistan';
+ sp[39].Name:='China';
+ sp[40].Name:='Mittlerer Osten';
+ sp[41].Name:='Indien';
+ sp[42].Name:='Siam';     {Asien 31-42}
+ {Kontinentnummern}
+
+ FOR i:=1 TO 9 DO       {NAmerika}
+  sp[i].Kontinent:=1;
+ FOR i:=10 TO 13 DO     {SAmerika}
+  sp[i].Kontinent:=2;
+ FOR i:=14 TO 19 DO     {Afrika}
+  sp[i].Kontinent:=3;
+ FOR i:=20 TO 26 DO     {Europa}
+  sp[i].Kontinent:=4;
+ FOR i:=27 TO 30 DO     {Australien}
+  sp[i].Kontinent:=5;
+ FOR i:=31 TO 42 DO     {Asien}
+  sp[i].Kontinent:=6;
+
+ {Armeenanzahl}
+
+ FOR i:=1 TO 42 DO
+  sp[i].Armeen:=1;
+
+ {Zuordnung d. Nachbarn}
+
+ sp[1].N[1]:=2;
+ sp[1].N[2]:=3;
+ sp[1].N[3]:=35;
+ sp[1].N[4]:=0;
+
+ sp[2].N[1]:=1;
+ sp[2].N[2]:=3;
+ sp[2].N[3]:=4;
+ sp[2].N[4]:=8;
+ sp[2].N[5]:=0;
+
+ sp[3].N[1]:=1;
+ sp[3].N[2]:=2;
+ sp[3].N[3]:=4;
+ sp[3].N[4]:=7;
+ sp[3].N[5]:=0;
+
+ sp[4].N[1]:=2;
+ sp[4].N[2]:=3;
+ sp[4].N[3]:=5;
+ sp[4].N[4]:=6;
+ sp[4].N[5]:=7;
+ sp[4].N[6]:=8;
+
+ sp[5].N[1]:=4;
+ sp[5].N[2]:=6;
+ sp[5].N[3]:=8;
+ sp[5].N[4]:=0;
+
+ sp[6].N[1]:=4;
+ sp[6].N[2]:=5;
+ sp[6].N[3]:=7;
+ sp[6].N[4]:=9;
+ sp[6].N[5]:=0;
+
+ sp[7].N[1]:=3;
+ sp[7].N[2]:=4;
+ sp[7].N[3]:=6;
+ sp[7].N[4]:=9;
+ sp[7].N[5]:=0;
+
+ sp[8].N[1]:=2;
+ sp[8].N[2]:=4;
+ sp[8].N[3]:=5;
+ sp[8].N[4]:=20;
+ sp[8].N[5]:=0;
+
+ sp[9].N[1]:=6;
+ sp[9].N[2]:=7;
+ sp[9].N[3]:=10;
+ sp[9].N[4]:=0;
+
+ sp[10].N[1]:=9;
+ sp[10].N[2]:=11;
+ sp[10].N[3]:=12;
+ sp[10].N[4]:=0;
+
+ sp[11].N[1]:=10;
+ sp[11].N[2]:=12;
+ sp[11].N[3]:=15;
+ sp[11].N[4]:=0;
+
+ sp[12].N[1]:=10;
+ sp[12].N[2]:=11;
+ sp[12].N[3]:=13;
+ sp[12].N[4]:=0;
+
+ sp[13].N[1]:=11;
+ sp[13].N[2]:=12;
+ sp[13].N[3]:=0;
+
+ sp[14].N[1]:=15;
+ sp[14].N[2]:=16;
+ sp[14].N[3]:=25;
+ sp[14].N[4]:=40;
+ sp[14].N[5]:=0;
+
+ sp[15].N[1]:=11;
+ sp[15].N[2]:=14;
+ sp[15].N[3]:=16;
+ sp[15].N[4]:=17;
+ sp[15].N[5]:=25;
+ sp[15].N[6]:=26;
+
+ sp[16].N[1]:=14;
+ sp[16].N[2]:=15;
+ sp[16].N[3]:=17;
+ sp[16].N[4]:=18;
+ sp[16].N[5]:=19;
+ sp[16].N[6]:=40;
+
+ sp[17].N[1]:=15;
+ sp[17].N[2]:=16;
+ sp[17].N[3]:=18;
+ sp[17].N[4]:=0;
+
+ sp[18].N[1]:=16;
+ sp[18].N[2]:=17;
+ sp[18].N[3]:=19;
+ sp[18].N[4]:=0;
+
+ sp[19].N[1]:=16;
+ sp[19].N[2]:=18;
+ sp[19].N[3]:=0;
+
+ sp[20].N[1]:=8;
+ sp[20].N[2]:=21;
+ sp[20].N[3]:=23;
+ sp[20].N[4]:=0;
+
+ sp[21].N[1]:=20;
+ sp[21].N[2]:=22;
+ sp[21].N[3]:=23;
+ sp[21].N[4]:=24;
+ sp[21].N[5]:=0;
+
+ sp[22].N[1]:=21;
+ sp[22].N[2]:=24;
+ sp[22].N[3]:=25;
+ sp[22].N[4]:=33;
+ sp[22].N[5]:=38;
+ sp[22].N[6]:=40;
+
+ sp[23].N[1]:=20;
+ sp[23].N[2]:=21;
+ sp[23].N[3]:=24;
+ sp[23].N[4]:=26;
+ sp[23].N[5]:=0;
+
+ sp[24].N[1]:=21;
+ sp[24].N[2]:=22;
+ sp[24].N[3]:=23;
+ sp[24].N[4]:=25;
+ sp[24].N[5]:=26;
+ sp[24].N[6]:=0;
+
+ sp[25].N[1]:=14;
+ sp[25].N[2]:=15;
+ sp[25].N[3]:=22;
+ sp[25].N[4]:=24;
+ sp[25].N[5]:=26;
+ sp[25].N[6]:=40;
+
+ sp[26].N[1]:=15;
+ sp[26].N[2]:=23;
+ sp[26].N[3]:=24;
+ sp[26].N[4]:=25;
+ sp[26].N[5]:=0;
+
+ sp[27].N[1]:=28;
+ sp[27].N[2]:=29;
+ sp[27].N[3]:=42;
+ sp[27].N[4]:=0;
+
+ sp[28].N[1]:=27;
+ sp[28].N[2]:=29;
+ sp[28].N[3]:=30;
+ sp[28].N[4]:=0;
+
+ sp[29].N[1]:=27;
+ sp[29].N[2]:=28;
+ sp[29].N[3]:=30;
+ sp[29].N[4]:=0;
+
+ sp[30].N[1]:=28;
+ sp[30].N[2]:=29;
+ sp[30].N[3]:=0;
+
+ sp[31].N[1]:=32;
+ sp[31].N[2]:=34;
+ sp[31].N[3]:=35;
+ sp[31].N[4]:=0;
+
+ sp[32].N[1]:=33;
+ sp[32].N[2]:=39;
+ sp[32].N[3]:=37;
+ sp[32].N[4]:=34;
+ sp[32].N[5]:=31;
+ sp[32].N[6]:=0;
+
+ sp[33].N[1]:=22;
+ sp[33].N[2]:=38;
+ sp[33].N[3]:=39;
+ sp[33].N[4]:=32;
+ sp[33].N[5]:=0;
+
+ sp[34].N[1]:=32;
+ sp[34].N[2]:=31;
+ sp[34].N[3]:=35;
+ sp[34].N[4]:=37;
+ sp[34].N[5]:=0;
+
+ sp[35].N[1]:=1;
+ sp[35].N[2]:=31;
+ sp[35].N[3]:=34;
+ sp[35].N[4]:=37;
+ sp[35].N[5]:=0;
+
+ sp[36].N[1]:=35;
+ sp[36].N[2]:=37;
+ sp[36].N[3]:=0;
+
+ sp[37].N[1]:=32;
+ sp[37].N[2]:=34;
+ sp[37].N[3]:=35;
+ sp[37].N[4]:=36;
+ sp[37].N[5]:=39;
+ sp[37].N[6]:=0;
+
+ sp[38].N[1]:=22;
+ sp[38].N[2]:=33;
+ sp[38].N[3]:=39;
+ sp[38].N[4]:=40;
+ sp[38].N[5]:=41;
+ sp[38].N[6]:=0;
+
+ sp[39].N[1]:=32;
+ sp[39].N[2]:=33;
+ sp[39].N[3]:=37;
+ sp[39].N[4]:=38;
+ sp[39].N[5]:=41;
+ sp[39].N[6]:=42;
+
+ sp[40].N[1]:=14;
+ sp[40].N[2]:=16;
+ sp[40].N[3]:=22;
+ sp[40].N[4]:=25;
+ sp[40].N[5]:=38;
+ sp[40].N[6]:=41;
+
+ sp[41].N[1]:=38;
+ sp[41].N[2]:=39;
+ sp[41].N[3]:=40;
+ sp[41].N[4]:=42;
+ sp[41].N[5]:=0;
+
+ sp[42].N[1]:=27;
+ sp[42].N[2]:=39;
+ sp[42].N[3]:=41;
+ sp[42].N[4]:=0;
+
+   {Laenderanz/Startkennz in tKontinent}
+
+ NAmerika.Laenderanz:=9;
+ NAmerika.Startkennzahl:=1;
+ SAmerika.Laenderanz:=4;
+ SAmerika.Startkennzahl:=10;
+ Afrika.Laenderanz:=6;
+ Afrika.Startkennzahl:=14;
+ Europa.Laenderanz:=7;
+ Europa.Startkennzahl:=20;
+ Australien.Laenderanz:=4;
+ Australien.Startkennzahl:=27;
+ Asien.Laenderanz:=12;
+ Asien.Startkennzahl:=31;
+
+ {Initialisierung des Grafiktreibers}
+  if RegisterBGIdriver(@CGADriverProc) < 0 then
+    Abort('CGA');
+  if RegisterBGIdriver(@EGAVGADriverProc) < 0 then
+    Abort('EGA/VGA');
+  if RegisterBGIdriver(@HercDriverProc) < 0 then
+    Abort('Herc');
+  if RegisterBGIdriver(@ATTDriverProc) < 0 then
+    Abort('AT&T');
+  if RegisterBGIdriver(@PC3270DriverProc) < 0 then
+    Abort('PC 3270');
+
+  if RegisterBGIfont(@SmallFontProc) < 0 then
+    Abort('Small');
+  if RegisterBGIfont(@GothicFontProc) < 0 then
+    Abort('Gothic');
+ Gd:= Detect;
+ Initgraph (Gd, Gm , '');
+ if graphResult <> grOk then
+  begin
+    Writeln('Graphics init error: ', GraphErrorMsg(GD));
+    Halt(1);
+  end;
+
+
+
+
+
+
+
+
+end; {Init}
+
+
+
+function armeen(sp:tspielfeld;spnr:byte):byte;
+  var i,x,y:byte;
+begin
+  x:=0;
+  for i:=1 to 42 do begin
+    if sp[i].eigner=spnr then
+    x:=x+1;
+  end;
+  y:=x div 3;
+  if y < 3 then y:=3;
+  if europa.eigner=spnr then y:=y+5;
+  if asien.eigner=spnr then y:=y+7;
+  if afrika.eigner=spnr then y:=y+3;
+  if namerika.eigner=spnr then y:=y+5;
+  if samerika.eigner=spnr then y:=y+2;
+  if australien.eigner=spnr then y:=y+2;
+  armeen:=y;
+end;
+
+
+
+function gefaehrdet(Brett:tsPielfeld;Land:byte):boolean;
+var
+  i:byte;
+  AA,AV:byte; {Armeen des Angreifers und Verteidigers}
+begin
+  i:=1;
+  AV:=Brett[Land].Armeen;
+  gefaehrdet:=false;
+  repeat
+    AA:=Brett[Brett[Land].N[i]].Armeen+Armeen(Brett,Brett[Brett[Land].N[i]].Eigner);
+   {^ Die Armeen, die auf dem Land stehen + alle, die er kriegen koennte}
+    if (aa > 49) or (av > 49)
+      then
+        if (AV*1.7) >= AA then gefaehrdet:=false
+      else
+        if tabelle[AA+3,AV]>50 then gefaehrdet:=true;
+    i:=i+1;
+  until (i=7) or (Brett[Land].N[i]=0);
+end;
+
+
+
+
+
+
+procedure Zuggenerator(brett:tspielfeld;SpNr:byte;var vonLand,Zuland:byte);
+{Liefert den naechsten auszufuehrenden Spielzug od. 0/0 bei aufhoeren.}
+type
+  pZugliste=^tZugliste;
+  tZugliste=record
+                  Von,Zu:1..48;
+                  Wert:real;
+                  Next:pZugliste;
+            end;
+var
+  i,j,Nachbar:byte;
+  h,Liste:pZugliste;
+  wert:real;
+
+procedure loesche(var Liste:pZugliste);
+begin
+  if Liste^.next<>nil
+    then loesche(liste^.next);
+  dispose (liste);
+end;
+
+procedure erwaege(Brett:tSpielfeld;vonLand,ZuLand:byte;var h:pZugliste);
+var
+  i,j:byte;
+  Gegner:byte; {Armeen des Gegners}
+  WERT:real;
+
+
+
+procedure anhaenge(var liste:pZugliste;von,zu:byte;Wert:real);
+{wird von Zuggenerator gebraucht um an die Zugliste ein Element anzuhaengen}
+begin
+
+  new(liste^.next);
+  liste:=liste^.next;
+  liste^.von:=von;
+  liste^.zu:=zu;
+  liste^.Wert:=wert;
+  liste^.next:=nil;
+end;
+
+begin
+  if Brett[vonLand].Armeen>1 then {Gegen BereichsÅberschreitung in Tabelle
+                                  1 gg 1 Armeen!!}
+    if tabelle[Brett[vonLand].Armeen,Brett[ZuLand].Armeen] > Angriffsschwelle then begin
+    {wieviel Prozent des Kontinents gehoert schon mir->umso besser der Zug}
+      wert:=1000+tabelle[Brett[vonLand].Armeen,Brett[ZuLand].Armeen]*2;
+
+  {Europa?}
+    if Brett[zuLand].kontinent=4 then begin
+      j:=1; {zaehlt Computerlaender im KOntinent}
+      for i:=europa.Startkennzahl to europa.Startkennzahl-1+europa.Laenderanz do
+        if Brett[i].eigner=Brett[vonLand].eigner then j:=j+1;
+      Wert:=wert*j;
+      wert:=wert / europa.Laenderanz;
+    end;
+
+   {Asien?}
+    if Brett[zuLand].kontinent=6 then begin
+      j:=1; {zaehlt Computerlaender im KOntinent}
+      for i:=Asien.Startkennzahl to Asien.Startkennzahl-1+Asien.Laenderanz do
+        if Brett[i].eigner=Brett[vonLand].eigner then j:=j+1;
+      Wert:=wert*j;
+      wert:=wert / Asien.Laenderanz;
+    end;
+   {Australien?}
+    if Brett[zuLand].kontinent=5 then begin
+      j:=1; {zaehlt Computerlaender im KOntinent}
+      for i:=Australien.Startkennzahl to Australien.Startkennzahl-1+Australien.Laenderanz do
+        if Brett[i].eigner=Brett[vonLand].eigner then j:=j+1;
+      Wert:=wert*j;
+      wert:=wert / Australien.Laenderanz;
+    end;
+   {NAmerika?}
+    if Brett[zuLand].kontinent=1 then begin
+      j:=1; {zaehlt Computerlaender im KOntinent}
+      for i:=Namerika.Startkennzahl to Namerika.Startkennzahl-1+Namerika.Laenderanz do
+        if Brett[i].eigner=Brett[vonLand].eigner then j:=j+1;
+      Wert:=wert*j;
+      wert:=wert / Namerika.Laenderanz;
+    end;
+   {SAmerika?}
+    if Brett[zuLand].kontinent=2 then begin
+      j:=1; {zaehlt Computerlaender im KOntinent}
+      for i:=SAmerika.Startkennzahl to SAmerika.Startkennzahl-1+SAmerika.Laenderanz do
+        if Brett[i].eigner=Brett[vonLand].eigner then j:=j+1;
+      Wert:=wert*j;
+      wert:=wert / SAMerika.Laenderanz;
+    end;
+   {Afrika?}
+    if Brett[zuLand].kontinent=3 then begin
+      j:=1; {zaehlt Computerlaender im KOntinent}
+      for i:=Afrika.Startkennzahl to Afrika.Startkennzahl-1+Afrika.Laenderanz do
+        if Brett[i].eigner=Brett[vonLand].eigner then j:=j+1;
+      Wert:=wert*j;
+      wert:=wert / Afrika.Laenderanz;
+    end;
+
+    {Koennte mich nach dem Angriff jemand ueberfallen?}
+    if not gefaehrdet(Brett,vonLand)
+
+      then anhaenge(h,vonLand,zuLand,wert);
+
+  end;
+
+end;
+
+procedure bester(Liste:pZugliste;var vonLand,Zuland:byte);
+var
+  wert:real;
+  h:pZugliste;
+begin
+  h:=liste^.next;
+  wert:=0;
+  vonLand:=0;
+  zuLand:=0;
+  while h <> nil do begin
+    if h^.wert > wert then begin
+      vonLand:=h^.von;
+      zuLand :=h^.zu;
+      wert:=h^.wert;
+    end;
+    h:=h^.next;
+  end;
+
+end;
+
+
+begin  {Zuggenerator}
+  vonLand:=0;
+  new(Liste);
+  h:=Liste;
+  liste^.next:=nil;
+  h^.wert:=0;
+  for i:=1 to 42 do      {i laeuft alle Laender durch}
+    if brett[i].eigner=SpNr then     {gehoert i dem Spieler ?}
+      begin
+          j:=1;
+          repeat                 {Nachbarlaender durchlaufen}
+            Nachbar:=brett[i].N[j];
+            if brett[Nachbar].eigner<>spnr then
+              erwaege(brett,i,Nachbar,h);
+            j:=j+1;
+          until (j=7) or (brett[i].N[j]=0);
+      end;
+  Bester(Liste,vonLand,ZuLand); {Besten Zug aus der Liste auswaehlen}
+  loesche(Liste);
+end;
+
+procedure wuerfelasg(a1,a2,a3,v1,v2,v3:byte);
+ const d=6;
+ var f:integer;
+     zahl:string;
+ begin
+  setcolor(green);
+  bar((d*85),(d*46),(d*93),(d*56));
+  setcolor(0);
+  outtextxy((d*85),(d*46),'WÅrfelergebnis: ');
+  settextstyle(2,0,4);
+  outtextxy((d*85),(d*48),'Angreifer:');
+  str(a1,zahl);
+   outtextxy((d*85),(d*52),'Verteidiger:');
+  outtextxy((d*87),(d*50),zahl);
+  if (a2<>0) then
+    begin
+      str(a2,zahl);
+      outtextxy((d*89),(d*50),zahl);
+    end;
+  if (a3<>0) then
+    begin
+      str(a3,zahl);
+      outtextxy((d*91),(d*50),zahl);
+    end;
+  str(v1,zahl);
+  outtextxy((d*87),(d*54),zahl);
+  if (v2<>0) then
+    begin
+      str(v2,zahl);
+      outtextxy((d*89),(d*54),zahl);
+    end;
+  if (v3<>0) then
+    begin
+      str(v3,zahl);
+      outtextxy((d*91),(d*54),zahl);
+    end;
+ end;
+
+
+procedure Wuerfeln(var Brett:tSpielfeld;vonLand,zuLand:byte);
+  type
+    tFeld = array [1..3] of byte; {Hoechstens 3 Wuerfel!}
+    tAA=byte;
+    tAV=byte;
+  var
+    AV,AA             : byte; {Anzahl der Armeen}
+    WErg_A : tFeld;
+    WErg_V : tFeld;
+    WA,WV             : byte;   {Wuerfelzahl des Angreifers bzw. Verteidigers}
+    i                 : byte;
+    gefahr            : boolean;
+  procedure Sortiere(var f:tFeld;n:byte); {Sortiert nur die ersten n Elemente}
+    var
+      i,j,hilf : integer;
+    begin
+      for i := 1 to n-1 do
+        for j := 2 to n do
+          if f[i] < f[j] then begin
+            hilf := f[i];
+            f[i] := f[j];
+            f[j] := hilf
+          end
+    end;
+  function Wuerfelzahl_A(AA:tAA) : byte;
+    begin
+      if AA < 4
+        then Wuerfelzahl_A := AA-1
+        else Wuerfelzahl_A := 3
+    end;
+  function Wuerfelzahl_V(AV:tAV) : byte;
+    begin
+      if AV < 3
+        then Wuerfelzahl_V := AV
+        else Wuerfelzahl_V := 3
+    end;
+
+  function rueber(Brett:tSpielfeld;vonLand,Zuland:byte):boolean;
+  var
+    wert: array [1..2] of real;
+    Land:array [1..2] of byte;
+    i,j,k,N:byte;
+    t:real;
+    Feindkon:boolean;
+  begin
+     {Das folgende ist eingefÅgt aus C_Setze/erwÑge!}
+  Land[1]:=vonLand;
+  Land[2]:=Zuland;
+
+  for k:=1 to 2 do begin
+
+  {Europa?}
+    if brett[land[k]].kontinent=4 then begin
+      j:=1; {zaehlt Computerlaender im KOntinent}
+      for i:=europa.Startkennzahl to europa.Startkennzahl-1+europa.Laenderanz do
+        if Brett[i].eigner=Brett[land[k]].eigner then j:=j+1;
+      wert[i]:=wert[i]*j;
+      wert[i]:=wert[i] / europa.Laenderanz;
+    end;
+
+   {Asien?}
+    if brett[land[k]].kontinent=6 then begin
+      j:=1; {zaehlt Computerlaender im KOntinent}
+      for i:=Asien.Startkennzahl to Asien.Startkennzahl-1+Asien.Laenderanz do
+        if Brett[i].eigner=Brett[land[k]].eigner then j:=j+1;
+      wert[i]:=wert[i]*j;
+      wert[i]:=wert[i] / Asien.Laenderanz;
+    end;
+   {Australien?}
+    if brett[land[k]].kontinent=5 then begin
+      j:=1; {zaehlt Computerlaender im KOntinent}
+      for i:=Australien.Startkennzahl to Australien.Startkennzahl-1+Australien.Laenderanz do
+        if Brett[i].eigner=Brett[land[k]].eigner then j:=j+1;
+      wert[i]:=wert[i]*j;
+      wert[i]:=wert[i] / Australien.Laenderanz;
+    end;
+   {NAmerika?}
+    if brett[land[k]].kontinent=1 then begin
+      j:=1; {zaehlt Computerlaender im KOntinent}
+      for i:=Namerika.Startkennzahl to Namerika.Startkennzahl-1+Namerika.Laenderanz do
+        if Brett[i].eigner=Brett[land[k]].eigner then j:=j+1;
+      wert[i]:=wert[i]*j;
+      wert[i]:=wert[i] / Namerika.Laenderanz;
+    end;
+   {SAmerika?}
+    if brett[land[k]].kontinent=2 then begin
+      j:=1; {zaehlt Computerlaender im KOntinent}
+      for i:=SAmerika.Startkennzahl to SAmerika.Startkennzahl-1+SAmerika.Laenderanz do
+        if Brett[i].eigner=Brett[land[k]].eigner then j:=j+1;
+      wert[i]:=wert[i]*j;
+      wert[i]:=wert[i] / SAMerika.Laenderanz;
+    end;
+   {Afrika?}
+    if brett[land[k]].kontinent=3 then begin
+      j:=1; {zaehlt Computerlaender im KOntinent}
+      for i:=Afrika.Startkennzahl to Afrika.Startkennzahl-1+Afrika.Laenderanz do
+        if Brett[i].eigner=Brett[land[k]].eigner then j:=j+1;
+      wert[i]:=wert[i]*j;
+      wert[i]:=wert[i] / Afrika.Laenderanz;
+    end;
+
+  {Angriffswahrscheinlichkeiten?}
+    i:=1;
+    j:=Brett[land[k]].Armeen;
+    wert[i]:=wert[i]*10;
+    feindkon:=false;
+    repeat  {NachbarlÑnder durchlaufen - welches kann comp angreifen ?}
+      N:=Brett[land[k]].N[i];
+      t:=tabelle[j+1,Brett[N].Armeen];
+      if (t>AngriffsSchwelle) and (Brett[n].eigner<>Brett[vonLand].eigner)
+        then begin
+              wert[i]:=wert[i]+t;
+              feindkon:=true;
+             end;
+      i:=i+1;
+
+    until (i=7) or (Brett[Land[k]].N[i]=0);
+    if feindkon=false then wert[i]:=0;
+  end;
+  if wert[2]>wert[1] then rueber:=true
+                     else rueber:=false;
+  if Brett[vonLand].Armeen=1 then rueber:=false;
+
+  end;
+
+
+  var
+    as,a:string;
+
+  begin {ein_Spiel}
+      str(vonLand,a);
+      as:='Angriff '+Brett[vonLand].name+' ('+a+')';
+      str(zuLand,a);
+      as:=as+' nach '+Brett[zuland].name+' ('+a+').';
+      text(as);
+      AA:=Brett[vonLand].Armeen;
+      AV:=Brett[zuLand].Armeen;
+      for i := 1 to 3 do begin
+        WErg_A[i] := 0;
+        WErg_V[i] := 0
+      end;
+      WA := Wuerfelzahl_A(AA);
+      WV := Wuerfelzahl_V(AV);
+      for i := 1 to WA do
+        WErg_A[i] := random(6)+1;
+      Sortiere(WErg_A,WA);
+      for i := 1 to WV do
+        WErg_V[i] := random(6)+1;
+      Sortiere(WErg_V,WV);
+      for i := 1 to WV do
+        if WErg_A[i] > WErg_V[i]
+          then AV := AV-1
+          else AA := AA-1;
+      {Ausgabe des WÅrfelergebnisses}
+      str(Brett[vonLand].Armeen-AA,a);
+      as:='Verluste: Angreifer: '+a+' Verteidiger: ';
+      str(Brett[ZuLand].Armeen-AV,a);
+      as:=as+a+'.';
+      wuerfelasg(WErg_A[1],WErG_A[2],WErG_A[3],WErG_V[1],WErG_V[2],WErG_V[3]);
+      text(as);
+    {Interpretation des Wuerfelergebnisses: Ist das Land erobert?
+       =>Dann besetzen, mit wievielen Armeen?}
+     { if av < 1 then
+        if spieler[Brett[vonLand].eigner].typ = false then begin
+            av:=1;
+
+            repeat
+              Brett[vonLand].Armeen:=AA-AV;
+              gefahr:=gefaehrdet(Brett,vonLand);
+              if (not gefahr)  then av:=av+1;
+            until (gefahr) or (av>(AA-1));
+            AA:=AA-AV;
+            Brett[ZuLand].eigner:=Brett[vonLand].eigner;
+        end;
+    if aa<1 then aa:=1;
+      }
+    {Neuer Versuch! Wieviel verschiebt der Computer?}
+    If AV=0 then begin
+      Brett[zuLand].eigner:=Brett[vonLand].eigner;
+      av:=1;
+      aa:=aa-1;
+      Brett[vonLand].Armeen:=AA;
+      Brett[ZuLand].Armeen:=AV;
+
+
+      if Spieler[Brett[vonLand].eigner].typ=false {Computer!}
+        then
+          while rueber(Brett,vonLand,Zuland)
+            do begin
+                 aa:=aa-1;
+                 av:=av+1;
+                 Brett[vonLand].Armeen:=AA;
+                 Brett[ZuLand].Armeen:=AV;
+               end
+
+        ELSE  begin
+          besitzerasg(brett);
+          armeenasg(brett);
+          str(zuLand,as);
+          as:='Auf '+Brett[zuLand].name+' ('+as+') noch wieviele verschieben? ';
+          repeat
+            av:=frage(as);
+          until av<Brett[vonland].armeen;
+          aa:=aa-av;
+          av:=Brett[Zuland].Armeen+av;
+        end;
+
+    end;
+
+    Brett[vonLand].Armeen:=AA;
+    Brett[ZuLand].Armeen:=AV;
+
+    armeenasg(brett);
+    besitzerasg(Brett);
+
+end;
+
+procedure C_Angreifen(var Brett:tSpielfeld;SpNr:byte);
+var
+  vonLand,ZuLand:byte;
+begin
+  repeat
+    Zuggenerator(Brett,SpNr,vonLand,Zuland);
+    if vonLand > 0 then begin
+      wuerfeln(Brett,vonLand,ZuLand);
+      kontinenteigner(brett);
+    end;
+  until vonLand=0;
+end;
+
+
+
+
+
+
+procedure C_setze(var Brett:tSpielfeld;SpNr:byte);
+type
+  pListe=^tListe;
+  tListe=record
+               Land:byte;
+               wert:real;
+               next:pListe;
+         end;
+
+
+
+
+procedure setze(var Brett:tSpielfeld;i:byte;var a:byte);
+var
+  as:string;
+begin
+  if (a > 0) and (Brett[i].Armeen < ntabelle )then begin
+    str(i,as);
+    as:='Computer setzt eine Armee auf '+Brett[i].name+' ('+as+'). ';
+    Brett[i].Armeen:=Brett[i].Armeen+1;
+    a:=a-1;
+    text(as);
+    armeenasg(Brett);
+    delay(200);
+  end;
+end;
+
+var
+  a,b,i,j:byte;
+  l,h:pliste;
+  wert:real;
+
+
+procedure erwaege(var Brett:tSpielfeld;Land:byte;var l:pListe);
+const
+  iniwert=1000;
+
+var
+  wert,t:real;
+  i,j:byte;
+  kontimir,Feindkon:boolean;
+begin
+
+  wert:=iniwert;{Umso grî·er , desto wichtiger die LÑnder pro Konitinent}
+  {Europa?}
+    if Brett[Land].kontinent=4 then begin
+      j:=1; {zaehlt Computerlaender im KOntinent}
+      for i:=europa.Startkennzahl to europa.Startkennzahl-1+europa.Laenderanz do
+        if Brett[i].eigner=Brett[Land].eigner then j:=j+1;
+      Wert:=wert*j;
+      wert:=wert / europa.Laenderanz;
+    end;
+
+   {Asien?}
+    if brett[land].kontinent=6 then begin
+      j:=1; {zaehlt Computerlaender im KOntinent}
+      for i:=Asien.Startkennzahl to Asien.Startkennzahl-1+Asien.Laenderanz do
+        if Brett[i].eigner=Brett[Land].eigner then j:=j+1;
+      Wert:=wert*j;
+      wert:=wert / Asien.Laenderanz;
+    end;
+   {Australien?}
+    if brett[land].kontinent=5 then begin
+      j:=1; {zaehlt Computerlaender im KOntinent}
+      for i:=Australien.Startkennzahl to Australien.Startkennzahl-1+Australien.Laenderanz do
+        if Brett[i].eigner=Brett[Land].eigner then j:=j+1;
+      Wert:=wert*j;
+      wert:=wert / Australien.Laenderanz;
+    end;
+   {NAmerika?}
+    if brett[land].kontinent=1 then begin
+      j:=1; {zaehlt Computerlaender im KOntinent}
+      for i:=Namerika.Startkennzahl to Namerika.Startkennzahl-1+Namerika.Laenderanz do
+        if Brett[i].eigner=Brett[Land].eigner then j:=j+1;
+      Wert:=wert*j;
+      wert:=wert / Namerika.Laenderanz;
+    end;
+   {SAmerika?}
+    if brett[land].kontinent=2 then begin
+      j:=1; {zaehlt Computerlaender im KOntinent}
+      for i:=SAmerika.Startkennzahl to SAmerika.Startkennzahl-1+SAmerika.Laenderanz do
+        if Brett[i].eigner=Brett[Land].eigner then j:=j+1;
+      Wert:=wert*j;
+      wert:=wert / SAMerika.Laenderanz;
+    end;
+   {Afrika?}
+    if brett[land].kontinent=3 then begin
+      j:=1; {zaehlt Computerlaender im KOntinent}
+      for i:=Afrika.Startkennzahl to Afrika.Startkennzahl-1+Afrika.Laenderanz do
+        if Brett[i].eigner=Brett[Land].eigner then j:=j+1;
+      Wert:=wert*j;
+      wert:=wert / Afrika.Laenderanz;
+    end;
+
+  {Angriffswahrscheinlichkeiten?}
+    i:=1;
+    j:=Brett[Land].Armeen;
+    kontimir:=false;
+    if wert > (iniwert-1) then kontimir:=true;
+    Feindkon:=false;
+    repeat  {NachbarlÑnder durchlaufen - welches kann comp angreifen ?}
+
+      t:=tabelle[j+1,Brett[Brett[Land].N[i]].Armeen];
+      if (t>AngriffsSchwelle)
+         and ((Brett[Land].Kontinent=Brett[Brett[land].N[i]].kontinent)
+           or (kontimir=true))
+            then wert:=wert+t;
+      if Brett[Land].eigner <> Brett[Brett[Land].N[i]].eigner then
+        feindkon:=true;
+      i:=i+1;
+    until (i=7) or (Brett[Land].N[i]=0);
+  if feindkon=false then wert:=0;
+  new(l^.next);
+  l:=l^.next;
+  l^.wert:=wert;
+  l^.Land:=Land;
+  l^.next:=nil;
+
+end;
+
+procedure loesche(var liste:pListe);
+begin
+  if liste^.next<>nil
+    then loesche(liste^.next);
+  dispose(liste);
+end;
+
+
+
+begin {C_Setze}
+  a:=armeen(Brett,SpNr);
+  repeat  {Verteidigungsarmeen fuer komplette Kontinente setzen}
+    b:=a; {Falls keine Armeen gesetzt werden, weiter}
+    if europa.eigner = SpNr then begin
+      i:=europa.Startkennzahl;
+      for j:= i to i+europa.Laenderanz-1 do
+        if gefaehrdet(Brett,j) then setze(Brett,j,a);
+    end;
+    if Asien.eigner = SpNr then begin
+      i:=Asien.Startkennzahl;
+      for j:=i to i+Asien.Laenderanz-1 do
+        if gefaehrdet(Brett,j) then setze(Brett,j,a);
+    end;
+    if Australien.eigner = SpNr then
+        if gefaehrdet(Brett,27) then setze(Brett,27,a);
+    if afrika.eigner = SpNr then begin
+      i:=Afrika.Startkennzahl;
+      for j:= i to i+Afrika.Laenderanz-1 do
+        if gefaehrdet(Brett,j) then setze(Brett,j,a);
+    end;
+
+    if NAmerika.eigner = SpNr then begin
+      i:=NAmerika.Startkennzahl;
+      for j:= i to i+NAmerika.Laenderanz-1 do
+        if gefaehrdet(Brett,j) then setze(Brett,j,a);
+    end;
+  until (b=a) or (a=0);
+
+
+
+
+  {Angriffsarmeen setzen}
+
+  while a > 0 do begin
+    new(l);
+    l^.wert:=0;
+    l^.next:=nil;
+    l^.land:=100;
+    h:=l;
+
+    for i:=1 to 42 do
+      if Brett[i].eigner = SpNr then erwaege(Brett,i,h);
+
+    h:=l^.next;
+    wert:=-1;
+    repeat
+      if (h^.wert > wert) and (Brett[h^.land].Armeen < ntabelle) then begin
+        wert:=h^.wert;
+        i:=h^.land;
+      end;
+      h:=h^.next;
+    until h=nil;
+    setze(Brett,i,a);
+    loesche(l);
+  end;
+  text('Fertig mit Setzen.');
+
+end;
+
+
+procedure C_Verschieben (var Brett:tSpielfeld;SpNr:byte);
+type
+  tNiveau=array [1..42] of word;  {0..65535}
+
+
+var
+  Brett2:tSpielfeld;
+  i,j,Nachbar,Entfernung:byte;
+  Niveau:tNiveau;
+  Level:word;
+  fertig:boolean;
+  as,a:string;
+
+begin
+  Brett2:=brett;  {Auf dem 2. Brett wird nur abgezogen}
+  {Zuerst ein Durchlauf, bei dem die gefÑhrdeten LÑnder aus den Nachbar-
+   lÑndern Armeen abziehen, um die GefÑhrdung zu beheben. Dadurch wird
+   vermieden, da· bei der GefÑllelandschaft LÑnder bis zur GefÑhrdung
+   entblî·t werden. }
+
+  for i:=1 to 42 do {Laeuft die Laender durch, auf die Armeen verschoben
+                     werden sollen.}
+    begin
+    if Brett[i].eigner=SpNr then {Wenn das mein Land ist,}
+      if gefaehrdet(Brett2,i) then begin {und es gefaehrdet ist}
+        j:=1;
+        repeat
+          Nachbar:=Brett[i].N[j];
+          if (Brett[Nachbar].eigner=SpNR) and (Brett2[Nachbar].Armeen>1) then begin
+            Brett2[Nachbar].Armeen:=Brett2[Nachbar].Armeen-1;
+            Brett[Nachbar].Armeen:=Brett[Nachbar].Armeen-1;
+            if (not gefaehrdet(Brett,Nachbar))
+              then begin
+                Brett[i].Armeen:=Brett[i].Armeen+1;
+                str(Nachbar,a);
+                as:='Verschiebe von '+Brett[Nachbar].name+' ('+a+') zu ';
+                str(i,a);
+                as:=as+Brett[i].name+' ('+a+').';
+                text(as);
+                armeenasg(brett);
+              end
+              else begin
+                Brett[Nachbar].Armeen:=Brett[Nachbar].Armeen+1;
+                Brett2[Nachbar].Armeen:=Brett2[Nachbar].Armeen+1;
+              end;
+            end;
+            j:=j+1; {Dann naechstes Land}
+        until (j=7) or (Brett[i].N[j]=0) or (not (gefaehrdet(Brett2,i)));
+      end;
+    end;
+
+{Das Gebirge wird hergestellt.}
+
+  for i:=1 to 42 do
+    Niveau[i]:=0;  {0 sind spÑter FeindlÑnder}
+  {Zuerst die LÑnder mit Niveau versehen, die FeindberÅhrung haben.}
+  for i:=1 to 42 do
+    if Brett[i].Eigner = SpNr then begin
+      j:=1;
+      Level:=1000; {1000 ist nachher Hinterland}
+      repeat
+        Nachbar:=Brett[i].N[j];
+        if (Brett[Nachbar].eigner <> SpNr) then
+          Level:=level-tabelle[Brett[Nachbar].Armeen,Brett[i].Armeen]-1;
+        j:=j+1;
+
+      until (j=7) or (Brett[i].N[j]=0);
+      Niveau[i]:=Level;
+    end;
+
+
+
+  {Jetzt die LÑnder, die keine FeindberÅhrung haben.}
+  Entfernung:=0; {Entfernung bis zum Feindesland}
+  repeat
+    fertig:=true;
+    entfernung:=entfernung+1;
+    for i:=1 to 42 do
+      if Niveau[i]=1000 then begin {Wenn keine FeindberÅhrung}
+        j:=1;
+        Level:=0;
+        repeat
+          Nachbar:=Brett[i].N[j];
+          if Niveau[Nachbar]<>1000 then
+            Level:=Level+Niveau[Nachbar];
+          j:=j+1;
+        until (J=7) or (Brett[i].N[j]=0);
+        j:=j-1;
+        Level:=level div j;
+        Niveau[i]:=(1000*Entfernung)+Level;
+        fertig:=false;
+      end;
+  until fertig=true;
+  {Die Gebirgslandschaft ist fertig. Jetzt mÅssen die Armeen gemÑ· dem
+  GefÑlle gezogen werden.}
+  {Die LÑnder durchlaufen, von denen gezogen wird. Wenn ihr Niveau >1000,
+  dann haben sie keinen Feindkontakt und geben alle Armeen an ein tiefers
+  Land ab.}
+  for i:=1 to 42 do
+    if (Niveau[i]>1000) and (Brett2[i].armeen>1) then begin
+      {Suche das tiefste Land. Level ist tiefstes,
+      Entfernung ist Landnr.}
+      j:=1;
+      Level:=65000;
+      repeat
+        Nachbar:=Brett[i].N[j];
+        if (Niveau[Nachbar]<Level) and (Brett[Nachbar].eigner=Spnr) then begin
+          Level:=Niveau[Nachbar];
+          Entfernung:=Nachbar;
+        end;
+        j:=j+1;
+      until (j=7) or (Brett[i].N[j]=0);
+      {Jetzt werden alle Armeen bis auf eine verschoben}
+      str(i,a);
+      as:='Verschiebe alle Armeen von '+Brett[i].name+' ('+a+') auf ';
+      str(Entfernung,a);
+      as:=as+Brett[Entfernung].name+' ('+a+').';
+      Brett[Entfernung].Armeen:=Brett[Entfernung].Armeen+Brett2[i].Armeen-1;
+      Brett[i].Armeen:=1;
+      Text(as);
+      armeenasg(Brett);
+    end;
+
+end; {C_Verschieben}
+
+
+
+
+
+
+
+
+
+procedure C_zug(var Brett:tSpielfeld;SpNr:byte);
+var
+  i,z:byte;
+begin
+
+
+  C_setze(Brett,SpNr);
+  C_Angreifen(Brett,SpNr);
+  C_verschieben(Brett,SpNr);
+
+end;
+
+
+{
+procedure Angriff(var sp:tspielfeld);
+var ant,ant2:char;
+      i,AA,AV:byte;
+      nach?:boolean;
+begin
+  repeat
+    i:=0;
+    write('Von welchem Land wollen Sie angreifen(Laender-Zahl) ?: ');
+    readln(vonland);
+    write('Welches Land wollen Sie angreifen(Laender-Zahl) ?: ');
+    readln(zuland);
+    repeat
+      i:=i+1;
+      if sp[vonland].N[i] = zuland
+        then nach? := true
+        else nach? := false;
+    until (nach? = true) or (sp[vonland].N[i] = 0);
+    if sp[vonland].N[i] = 0
+      then writeln('Die Laender koennen sich nicht bekaempfen , da sie nicht aneinandergrenzen ');
+      else begin
+             writeln('Angreifendes Land   : ',sp[vonland].name);
+             writeln('Verteidigendes land : ',sp[zuland].name);
+             write('Ist der Angriff richtig ? (j)a oder (n)ein : ');
+             readln(ant);
+  until ant='j';
+  wuerfeln(sp,vonland,zuland);
+   begin
+      repeat
+        writeln('Armeen: Angreifer  : ',sp[vonland].armeen);
+        writeln('        Verteidiger: ',sp[zuland].armeen);
+        write('Wollen Sie noch einmal angreifen? (j)a oder (n)ein : ');
+        readln(ant2);
+      until ant2='n';
+    end
+  sp[vonLand].Armeen:=AA;
+  sp[zuLand].Armeen:=AV;
+  Ausgabe(sp);
+end;
+
+procedure verschieben()
+  var
+begin
+  writeln('Welche Einheiten wollen Sie verschieben ?');
+  write('Von welchem Land (Laenderzahl) : ');
+  readln(vl);
+  write('Zu welchem Land (Laenderzahl) : ');
+  readln(zl);
+    }
+
+
+
+procedure Zug(var Brett:tSpielfeld;var SpNr:byte);
+
+var
+  arm,i:byte;
+  a,b:byte;
+  as:string;
+  brett2:tSpielfeld;
+
+function neben(Brett:tSpielfeld;a,b:byte):boolean;
+var
+  i:byte;
+begin
+  i:=1;
+  neben:=false;
+  repeat
+    if Brett[a].N[i]=b then neben:=true;
+    i:=i+1;
+  until (i=7) or (Brett[a].N[i]=0);
+end;
+
+
+label 99;
+begin
+  arm:=armeen(Brett,Spnr);      {Armeen setzen}
+  repeat
+    str(arm,as);
+    as:=Spieler[SpNr].name+' hat noch '+as+' Armeen. Wohin? ';
+    repeat
+      a:=frage(as);
+      if a=99 then goto 99;
+    until ((a<43) and (a>0) and (Brett[a].eigner=spnr));
+    str(a,as);
+    as:='Auf '+Brett[a].name+' ('+as+'). Wieviele? ';
+    repeat
+      b:=frage(as);
+      if a=99 then goto 99;
+    until b<=arm;
+    Brett[a].armeen:=Brett[a].armeen+b;
+    arm:=arm-b;
+    armeenasg(Brett);
+  until arm=0;
+
+  repeat       {Angreifen}
+    repeat
+      as:=spieler[SpNr].name+' Angreifen. Von Wo? (00-Ende) ';
+      a:=frage(as);
+       if a=99 then goto 99;
+    until (((a<43)
+          and (a>0)
+          and (Brett[a].eigner=spnr)
+          and (Brett[a].armeen>1))
+          or (a=0));
+    if a<>0 then begin
+      str(a,as);
+      as:='Von '+Brett[a].name+' ('+as+') nach? ';
+      repeat
+        b:=frage(as);
+        if b=99 then goto 99;
+      until (b<43) and (b>=0) and (Brett[b].eigner<>SpNr);
+      if (b=0) or (Brett[a].armeen <= Brett[b].armeen)
+         or (not (neben(Brett,a,b))) then
+          text('Geht nicht.')
+        else
+          wuerfeln(Brett,a,b);
+      armeenasg(Brett);
+      besitzerasg(Brett);
+    end;
+  until a=0;
+
+  brett2:=brett;
+  repeat      {Verschieben}
+    repeat
+      as:=spieler[SpNr].name+' Verschieben. Von Wo? (00-Ende) ';
+      a:=frage(as);
+      if a=99 then goto 99;
+    until ((a<43)
+      and ((Brett[a].eigner=spnr) or (a=0)));
+
+
+    if (a<>0) and (a<>99) then begin
+      str(a,as);
+      as:='Von '+Brett[a].name+' ('+as+') nach? ';
+      repeat
+        b:=frage(as);
+        if (a=99) or (b=99) then goto 99;
+      until ((b<43) and (b>0) and (Brett[b].eigner=SpNr) and (neben(Brett,a,b)))
+        or (B=0);
+      if not (B=0) then begin
+        str(b,as);
+        as:='Auf '+Brett[b].name+' ('+as+'). Wieviele? ';
+        arm:=frage(as);
+        if a=99 then goto 99;
+        i:=1;
+        if arm>=Brett2[a].armeen then
+          text('Zuviele.')
+          else
+            Brett[a].armeen:=Brett[a].armeen-arm;
+            Brett[b].armeen:=Brett[b].armeen+arm;
+            armeenasg(Brett);
+        end;
+      end;
+  until a=0;
+  99:  if (a=99) or (b=99) then SpNr:=0;
+end;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+procedure spiel(Brett:tSpielfeld;Spieler:tSpieler;SpAnz:byte);
+var
+  SpNr,i,j,lebend:byte;
+  Ok:boolean;
+label 98;
+begin
+  besitzerasg(brett);
+  armeenasg(Brett);
+  lebend:=SpAnz;
+  SpNr:=1;
+  repeat
+    lebend:=0;
+    if spieler[SpNr].status = true then
+      if spieler[Spnr].typ = true then
+          Zug(Brett,Spnr)
+        else
+          c_Zug(Brett,SpNr);
+
+    if SpNr=0 then goto 98;
+    if Spieler[SpNR].status = true then begin
+      Kontinenteigner(Brett);
+      {Sind noch alle Spieler da?}
+      for i:=1 to SpAnz do begin
+        j:=1;
+        ok:=false;
+        repeat
+          if Brett[j].Eigner=i then ok:=true;
+          j:=j+1;
+        until (j=43) or (Ok=true);
+        if ok=false then begin Spieler[i].status:=false;
+                               spieler[i].name:=tot;
+                         end;
+        end;
+      for i:=1 to SpAnz do
+        if Spieler[i].status=true then
+          lebend:=lebend+1;
+    end;
+    spnr:=spnr+1;    {NÑchster Spieler}
+    if spnr=spAnz+1 then spnr:=1;
+  until (lebend=1);
+  98:delay(1);
+end;
+
+
+
+
+
+begin {Risiko}
+  randomize;
+
+
+
+  Init(Sp);
+    ausgabe(sp);
+  start(spanz,spieler);
+   Kartengeben(Sp,SpAnz);
+  Kontinenteigner(Sp);
+  inittab(tabelle);
+
+
+  if spanz>1 then begin
+
+   clearviewport;
+   ausgabe(sp);
+   besitzerasg(sp);
+   armeenasg(sp);
+
+   spiel(sp,Spieler,spAnz);
+
+  end;
+  ende;
+end.
+
+
+{Zum Ende des Spieles noch Closegraph eingeben!}
